@@ -1,0 +1,62 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+    depends_on:
+      - redis
+    command: uvicorn api.app:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+    depends_on:
+      - redis
+    command: celery -A api.celery_app worker --loglevel=info --concurrency=2
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000/api
+    depends_on:
+      - api
+    command: streamlit run ui/app.py --server.port 8501 --server.address 0.0.0.0
+    restart: unless-stopped
+
+volumes:
+  redis_data:

@@ -1,0 +1,37 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS-specific
+.DS_Store
+.DS_Store?
+._*
+
+# Python virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment and secrets
+.env
+
+# Tool directories
+.opencode/
+.kombai/
+
+# Local run outputs/uploads
+uploads/
+output/
+hasil_transkrip_lokal/
+
+# Media files
+*.mp3
+*.MP3
+*.wav
+*.WAV
+*.mp4
+*.MP4
+*.m4a
+*.M4A
