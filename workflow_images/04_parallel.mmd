@@ -1,0 +1,41 @@
+---
+title: Parallel Execution - Stage 3 & 4
+---
+sequenceDiagram
+    participant P as Pipeline
+    participant T as Thread 1: Transcriber
+    participant D as Thread 2: Diarizer
+    participant Cache as Cache Layer
+
+    P->>P: Split audio → chunks
+    
+    rect rgb(220, 252, 231)
+    Note over P,D: ⚡ PARALLEL EXECUTION (ThreadPoolExecutor)
+    par
+        P->>T: transcribe_all(chunks)
+        P->>D: run_diarization(chunks)
+    end
+    end
+
+    loop per chunk
+        T->>Cache: Check cache (MD5)
+        alt Cache HIT
+            Cache-->>T: Load cached transcript
+        else Cache MISS
+            T->>T: Whisper / AssemblyAI
+            T->>Cache: Save to cache
+        end
+    end
+
+    loop per chunk
+        D->>Cache: Check cache (MD5)
+        alt Cache HIT
+            Cache-->>D: Load cached diarization
+        else Cache MISS
+            D->>D: Pyannote / SpeechBrain / VAD
+            D->>Cache: Save to cache
+        end
+    end
+
+    P->>P: merge_transcript_with_diarization()
+    Note over P: Fallback ke sequential jika paralel gagal

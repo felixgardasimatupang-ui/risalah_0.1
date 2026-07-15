@@ -1,0 +1,20 @@
+---
+title: Speaker Diarization - Fallback Chain
+---
+flowchart LR
+    START(["Diarization Start"]) -->
+    TRY{"Pyannote community-1<br/>(GPU recommended)"}
+    TRY -->|"✅ Success"| DONE(["DONE ✓"])
+    TRY -->|"❌ Fail"| TRY2{"Pyannote 3.1<br/>(fallback 1)"}
+    TRY2 -->|"✅ Success"| DONE
+    TRY2 -->|"❌ Fail"| TRY3{"SpeechBrain<br/>ECAPA-TDNN (CPU)"}
+    TRY3 -->|"✅ Success"| DONE
+    TRY3 -->|"❌ Fail"| VAD["VAD Segmentation<br/>All = SPEAKER_00"]
+    VAD --> DONE
+
+    style TRY fill:#22c55e,color:#000,stroke-width:2px
+    style TRY2 fill:#eab308,color:#000,stroke-width:2px
+    style TRY3 fill:#f97316,color:#fff,stroke-width:2px
+    style VAD fill:#6b7280,color:#fff,stroke-width:2px
+    style DONE fill:#3b82f6,color:#fff,stroke-width:2px
+    style START fill:#dbeafe,stroke:#3b82f6,stroke-width:2px

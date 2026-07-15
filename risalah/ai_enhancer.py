@@ -6,17 +6,19 @@ import time
 import requests
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-LLM_CONFIGS = [
-    {"name": "Groq", "base": "https://api.groq.com/openai/v1",
-     "key": os.getenv("GROQ_API_KEY", ""), "model": "llama-3.3-70b-versatile"},
-    {"name": "9router", "base": "http://localhost:20128/v1",
-     "key": os.getenv("NINEROUTER_API_KEY", ""), "model": "light-free"},
-]
+try:
+    from api.config import LLM_CONFIGS
+except ImportError:
+    LLM_CONFIGS = [
+        {"name": "Groq", "base": "https://api.groq.com/openai/v1",
+         "key": os.getenv("GROQ_API_KEY", ""), "model": "llama-3.3-70b-versatile"},
+        {"name": "9router", "base": os.getenv("NINEROUTER_BASE_URL", "http://localhost:20128/v1"),
+         "key": os.getenv("NINEROUTER_API_KEY", ""), "model": "light-free"},
+    ]
 
 
 SYSTEM_PROMPT = """Anda adalah asisten risalah rapat pemerintah Indonesia.
@@ -97,9 +99,13 @@ def init_gemini():
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key or api_key == "your_gemini_api_key_here":
         raise ValueError("GEMINI_API_KEY tidak valid")
-    import google.generativeai as genai
-    genai.configure(api_key=api_key)
-    return genai
+    try:
+        from google import genai
+        return genai.Client(api_key=api_key)
+    except ImportError:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        return genai
 
 def extract_json_robust(text):
     text = re.sub(r'^```(?:json)?\s*', '', text.strip(), flags=re.MULTILINE)
@@ -184,8 +190,8 @@ def validate_and_repair(enhanced, merged_data):
 
 def try_gemini(prompt, merged_data, output_dir, label="Gemini"):
     try:
-        genai = init_gemini()
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        client = init_gemini()
+        is_new_api = hasattr(client, "models")
     except ValueError as e:
         print(f"  {label} init gagal: {e}")
         return None
@@ -193,7 +199,13 @@ def try_gemini(prompt, merged_data, output_dir, label="Gemini"):
     for attempt in range(5):
         try:
             print(f"  {label} ({attempt + 1}/5)...")
-            response = model.generate_content(prompt)
+            if is_new_api:
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash", contents=prompt
+                )
+            else:
+                model = client.GenerativeModel("gemini-2.0-flash")
+                response = model.generate_content(prompt)
             result = extract_json_robust(response.text)
             if result:
                 result = validate_and_repair(result, merged_data)
@@ -301,14 +313,80 @@ def enhance_transcript(merged_data, output_dir=None):
     transcript_text = prepare_transcript_text(merged_data)
     prompt = SYSTEM_PROMPT.replace("__TRANSKRIP_TEXT__", transcript_text)
 
-    print("Enhancement via Gemini (prioritas)...")
-    result = try_gemini(prompt, merged_data, output_dir, "Gemini")
+    print("Enhancement via 9router (prioritas)...")
+    result = enhance_with_two_phase(merged_data, output_dir)
     if result:
         return result
 
-    print("Gemini gagal/kouta habis. Two-phase approach via Groq...")
-    result = enhance_with_two_phase(merged_data, output_dir)
+    print("Gemini fallback for full transcript...")
+    result = try_gemini(prompt, merged_data, output_dir, "Gemini")
     return result
+
+def try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context):
+    sample = prepare_transcript_text(merged_data, max_lines=100, max_chars=5000)
+    doc_ctx_short = doc_preview[:5000] if len(doc_preview) > 5000 else doc_preview
+
+    sp_prompt = (
+        "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
+        f"Dokumen pendukung:\n{doc_ctx_short}\n\n"
+        "Berdasarkan transkrip rapat berikut dan dokumen di atas, identifikasi semua pembicara.\n"
+        "Hasilkan JSON valid:\n"
+        '{"speaker_identification": [{"label": "SPEAKER_00", '
+        '"inferred_role": "...", "inferred_name": "...", "reason": "..."}]}\n\n'
+        f"CUPLIKAN TRANSKRIP:\n{sample}"
+    )
+    raw = call_llm(sp_prompt)
+    speaker_map = {}
+    if not raw:
+        return None
+    result = extract_json_robust(raw)
+    if not result or "speaker_identification" not in result:
+        return None
+    for s in result["speaker_identification"]:
+        speaker_map[s["label"]] = s
+    print(f"  9router: {len(speaker_map)} speaker teridentifikasi")
+
+    enhanced = build_doc_aware_enhanced(merged_data, doc_preview, speaker_map)
+    enhanced["dokumen_analisis_mode"] = True
+    enhanced["dokumen_sumber"] = [
+        {"file": s["file"], "type": "dokumen" if s.get("text") else "audio"}
+        for s in doc_context.get("document_sources", []) + doc_context.get("image_sources", [])
+    ]
+    ep = os.path.join(output_dir, "enhanced_lengkap.json")
+    with open(ep, "w", encoding="utf-8") as f:
+        json.dump(enhanced, f, indent=2, ensure_ascii=False)
+    n_spk = len(enhanced.get("speaker_identification", []))
+    n_seg = len(enhanced.get("corrected_transcript", []))
+    print(f"  + {len(doc_context.get('document_sources', []))} dokumen dianalisis sebagai konteks.")
+    print(f"Doc-aware OK: {n_spk} speaker, {n_seg} segmen.")
+    return enhanced
+
+def build_doc_aware_enhanced(merged_data, doc_preview, speaker_map):
+    doc_ctx_short = doc_preview[:5000] if len(doc_preview) > 5000 else doc_preview
+    sample = prepare_transcript_text(merged_data, max_lines=100, max_chars=5000)
+    sum_prompt = (
+        "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
+        f"Dokumen pendukung:\n{doc_ctx_short}\n\n"
+        "Berdasarkan transkrip dan dokumen di atas, ekstrak struktur risalah dalam JSON:\n"
+        '{"pokok_bahasan": ["..."], "keputusan_rapat": ["..."], '
+        '"kesimpulan": ["..."], "tindak_lanjut": [...], '
+        '"agenda_rapat": ["..."], "dokumen_terkait": ["..."]}\n\n'
+        "GUNAKAN dokumen untuk memahami konteks, tapi JANGAN menambahkan informasi fiktif.\n"
+        f"TRANSKRIP:\n{sample}"
+    )
+    raw2 = call_llm(sum_prompt)
+    summary = extract_json_robust(raw2) if raw2 else {}
+    enhanced = {
+        "speaker_identification": list(speaker_map.values()),
+        "corrected_transcript": build_corrected_transcript(merged_data, speaker_map),
+        "pokok_bahasan": summary.get("pokok_bahasan", []) if summary else [],
+        "keputusan_rapat": summary.get("keputusan_rapat", []) if summary else [],
+        "kesimpulan": summary.get("kesimpulan", []) if summary else [],
+        "tindak_lanjut": summary.get("tindak_lanjut", []) if summary else [],
+        "agenda_rapat": summary.get("agenda_rapat", []) if summary else [],
+        "dokumen_terkait": summary.get("dokumen_terkait", []) if summary else [],
+    }
+    return validate_and_repair(enhanced, merged_data)
 
 def enhance_document(document_text, output_dir=None):
     if output_dir is None:
@@ -326,13 +404,151 @@ def enhance_document(document_text, output_dir=None):
             return result
 
     try:
-        genai = init_gemini()
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        response = model.generate_content(prompt)
+        client = init_gemini()
+        is_new_api = hasattr(client, "models")
+        if is_new_api:
+            response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        else:
+            response = client.GenerativeModel("gemini-2.0-flash").generate_content(prompt)
         result = extract_json_robust(response.text)
         return result
     except Exception:
         return None
+
+DOC_AWARE_SYSTEM_PROMPT = """Anda adalah asisten risalah rapat pemerintah Indonesia.
+Anda menerima (1) teks dokumen pendukung rapat dan (2) transkrip rapat.
+
+TUGAS:
+- Gunakan DOKUMEN PENDUKUNG sebagai referensi untuk memahami konteks, istilah teknis,
+  singkatan pemerintahan, angka-angka anggaran, dan topik yang dibahas.
+- Koreksi kesalahan transkripsi untuk istilah pemerintahan (APBD, Perda, Permendagri,
+  Musrenbang, Renja, SPJ, TUPOKSI, DPA, KUA-PPAS, dll).
+- Identifikasi pembicara dari sapaan, jabatan, dan konteks.
+
+LARANGAN:
+- JANGAN mengubah maksud asli pembicara.
+- JANGAN menambahkan informasi fiktif atau yang tidak ada di transkrip.
+- JANGAN menulis ulang kalimat pembicara — koreksi hanya singkatan/istilah yang salah dengar.
+- Pertahankan gaya bahasa asli pembicara.
+
+Hasilkan JSON valid (TANPA markdown, TANPA ```):
+
+{
+  "speaker_identification": [
+    {"label": "SPEAKER_00", "inferred_role": "Ketua Rapat", "inferred_name": "...", "reason": "..."}
+  ],
+  "corrected_transcript": [
+    {"time": "00:02", "speaker": "Ketua Rapat", "speaker_original": "SPEAKER_00", "text": "teks terkoreksi"}
+  ],
+  "pokok_bahasan": ["..."],
+  "keputusan_rapat": ["...", {"nomor": "...", "isi": "..."}],
+  "kesimpulan": ["..."],
+  "tindak_lanjut": [{"tindakan": "...", "pic": "...", "batas_waktu": "..."}],
+  "agenda_rapat": ["..."],
+  "dokumen_terkait": ["dokumen yang dirujuk"],
+  "dokumen_dirujuk": ["nama dokumen pendukung yang relevan dengan pembahasan"]
+}
+
+DOKUMEN PENDUKUNG:
+__DOC_CONTEXT__
+
+TRANSKRIP:
+__TRANSKRIP_TEXT__"""
+
+
+def enhance_transcript_with_doc_context(merged_data, doc_context, output_dir=None):
+    if output_dir is None:
+        output_dir = os.path.join(PROJECT_ROOT, "output", "enhanced")
+    os.makedirs(output_dir, exist_ok=True)
+
+    doc_preview = doc_context.get("all_text_combined", "")
+    if not doc_preview.strip():
+        print("  Dokumen kosong, fallback ke enhance_transcript biasa.")
+        return enhance_transcript(merged_data, output_dir)
+
+    if len(doc_preview) > 15000:
+        doc_preview = doc_preview[:7500] + "\n...[TENGAH DIHAPUS]...\n" + doc_preview[-7500:]
+
+    transcript_text = prepare_transcript_text(merged_data, max_chars=12000)
+
+    prompt = DOC_AWARE_SYSTEM_PROMPT.replace("__DOC_CONTEXT__", doc_preview)
+    prompt = prompt.replace("__TRANSKRIP_TEXT__", transcript_text)
+
+    print("Doc-aware enhancement via 9router/Groq (prioritas)...")
+    result = try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context)
+    if result:
+        return result
+
+    print("9router gagal. Fallback Gemini+Doc...")
+    result = try_gemini(prompt, merged_data, output_dir, "Gemini+Doc")
+    if result:
+        result["dokumen_analisis_mode"] = True
+        result["dokumen_sumber"] = [
+            {"file": s["file"], "type": "dokumen" if s.get("text") else "audio"}
+            for s in doc_context.get("document_sources", []) + doc_context.get("image_sources", [])
+        ]
+        ep = os.path.join(output_dir, "enhanced_lengkap.json")
+        json.dump(result, open(ep, "w"), indent=2, ensure_ascii=False)
+        print(f"  + {len(doc_context.get('document_sources', []))} dokumen dianalisis sebagai konteks.")
+        return result
+
+    print("Semua gagal. Fallback build_fallback.")
+    return None
+    sample = prepare_transcript_text(merged_data, max_lines=100, max_chars=5000)
+    doc_ctx_short = doc_preview[:5000] if len(doc_preview) > 5000 else doc_preview
+
+    sp_prompt = (
+        "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
+        f"Dokumen pendukung:\n{doc_ctx_short}\n\n"
+        "Berdasarkan transkrip rapat berikut dan dokumen di atas, identifikasi semua pembicara.\n"
+        "Hasilkan JSON valid:\n"
+        '{"speaker_identification": [{"label": "SPEAKER_00", '
+        '"inferred_role": "...", "inferred_name": "...", "reason": "..."}]}\n\n'
+        f"CUPLIKAN TRANSKRIP:\n{sample}"
+    )
+    print("  Phase 1: speaker + doc context...")
+    raw = call_llm(sp_prompt)
+    speaker_map = {}
+    if raw:
+        result = extract_json_robust(raw)
+        if result and "speaker_identification" in result:
+            for s in result["speaker_identification"]:
+                speaker_map[s["label"]] = s
+            print(f"  {len(speaker_map)} speaker teridentifikasi")
+
+    sum_prompt = (
+        "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
+        f"Dokumen pendukung:\n{doc_ctx_short}\n\n"
+        "Berdasarkan transkrip dan dokumen di atas, ekstrak struktur risalah dalam JSON:\n"
+        '{"pokok_bahasan": ["..."], "keputusan_rapat": ["..."], '
+        '"kesimpulan": ["..."], "tindak_lanjut": [...], '
+        '"agenda_rapat": ["..."], "dokumen_terkait": ["..."]}\n\n'
+        "GUNAKAN dokumen untuk memahami konteks, tapi JANGAN menambahkan informasi fiktif.\n"
+        f"TRANSKRIP:\n{sample}"
+    )
+    print("  Phase 2: struktur + doc context...")
+    raw2 = call_llm(sum_prompt)
+    summary = extract_json_robust(raw2) if raw2 else {}
+
+    enhanced = {
+        "speaker_identification": list(speaker_map.values()),
+        "corrected_transcript": build_corrected_transcript(merged_data, speaker_map),
+        "pokok_bahasan": summary.get("pokok_bahasan", []) if summary else [],
+        "keputusan_rapat": summary.get("keputusan_rapat", []) if summary else [],
+        "kesimpulan": summary.get("kesimpulan", []) if summary else [],
+        "tindak_lanjut": summary.get("tindak_lanjut", []) if summary else [],
+        "agenda_rapat": summary.get("agenda_rapat", []) if summary else [],
+        "dokumen_terkait": summary.get("dokumen_terkait", []) if summary else [],
+        "dokumen_analisis_mode": True,
+    }
+    enhanced = validate_and_repair(enhanced, merged_data)
+
+    ep = os.path.join(output_dir, "enhanced_lengkap.json")
+    with open(ep, "w", encoding="utf-8") as f:
+        json.dump(enhanced, f, indent=2, ensure_ascii=False)
+    print(f"Two-phase + doc OK: {len(speaker_map)} speaker, {len(enhanced['corrected_transcript'])} segmen.")
+    return enhanced
+
 
 def build_fallback(merged_data, output_dir=None):
     if output_dir is None:

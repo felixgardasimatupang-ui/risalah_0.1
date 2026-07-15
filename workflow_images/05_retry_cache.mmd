@@ -1,0 +1,24 @@
+---
+title: Retry & Caching Mechanism
+---
+flowchart TD
+    subgraph RETRY["Retry: Exponential Backoff"]
+        direction TB
+        R1["📡 API Call"] --> R2{"Success?"}
+        R2 -->|Yes| R3["✅ Return Result"]
+        R2 -->|No| R4["⏳ Wait delay × 2^attempt<br/>attempt 1: 2s<br/>attempt 2: 4s<br/>attempt 3: 8s"]
+        R4 --> R1
+        R2 -->|"No (3 attempts)"| R5["❌ Error → Fallback"]
+    end
+
+    subgraph CACHE["Caching per-Chunk"]
+        direction TB
+        C1["Chunk Name:<br/>chunk_001.wav"] --> C2["MD5 Hash:<br/>a1b2c3d4..."]
+        C2 --> C3{"Cache file exists?"}
+        C3 -->|Yes| C4["✅ Load from JSON<br/>output/transcripts/a1b2c3d4.json"]
+        C3 -->|No| C5["🔄 Process chunk"]
+        C5 --> C6["💾 Save to JSON"]
+        C6 --> C4
+    end
+
+    RETRY --> CACHE

@@ -5,8 +5,10 @@
 Proyek ini membangun pipeline otomatis untuk menghasilkan **Risalah Rapat** (official meeting minutes) dari file audio rekaman rapat — khusus untuk konteks pemerintahan Indonesia. Pipeline menggabungkan 5 teknologi AI gratis & powerfull secara berurutan:
 
 ```
-Audio Rekaman → Split 30 menit → Transkripsi (Whisper/AssemblyAI) → 
-Speaker Diarization (Pyannote) → AI Enhancement (Gemini) → DOCX (Word)
+Audio Rekaman → Split 30 menit → Transkripsi (Whisper/AssemblyAI) ─┐
+                                  Speaker Diarization (Pyannote) ───┤→ Paralel!
+                                  AI Enhancement (Gemini) ←─────────┘
+                                  → DOCX (Word) Siap Cetak
 ```
 
 ---
@@ -40,29 +42,32 @@ Speaker Diarization (Pyannote) → AI Enhancement (Gemini) → DOCX (Word)
 └─────────────────────────┼─────────────────────────────────────────┘
                           ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  STAGE 3: Transkripsi (Dual Engine)                             │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  OPTION A: Whisper Lokal (Gratis, offline, privat)       │   │
-│  │  - Model: large-v3 (akurasi tinggi)                      │   │
-│  │  - Bahasa: Indonesia (id)                                │   │
-│  │  - Output: teks + segments (timestamp)                   │   │
-│  │                                                          │   │
-│  │  OPTION B: AssemblyAI Cloud (Akurasi maksimal)           │   │
-│  │  - Speaker diarization bawaan                            │   │
-│  │  - Bahasa Indonesia (id)                                 │   │
-│  └──────────────────────┬───────────────────────────────────┘   │
-└─────────────────────────┼─────────────────────────────────────────┘
-                          ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  STAGE 4: Speaker Diarization (Pyannote)                        │
+│  STAGE 3: Transkripsi (Dual Engine)  ←──┐                      │
+│  ┌────────────────────────────────────┐  │  ╔═ PARALEL ═══════╗ │
+│  │  OPTION A: Whisper Lokal           │  │  ║ Stage 3 + 4    ║ │
+│  │  - Model: large-v3                 │  │  ║ dijalankan     ║ │
+│  │  - Bahasa: Indonesia (id)          │  │  ║ bersamaan via  ║ │
+│  │  - Caching: per-chunk (MD5)        │  │  ║ ThreadPool-    ║ │
+│  │  - Retry: 3x exponential backoff   │  │  ║ Executor       ║ │
+│  │                                    │  │  ║                ║ │
+│  │  OPTION B: AssemblyAI Cloud        │  │  ║ Fallback ke    ║ │
+│  │  - Speaker diarization bawaan      │  │  ║ sequential     ║ │
+│  │  - Retry: 3x exponential backoff   │  │  ║ jika salah     ║ │
+│  └──────────────────────┬─────────────┘  │  ║ satu gagal     ║ │
+└─────────────────────────┼────────────────┘  ╚════════════════╝ │
+                          ▼                                       │
+┌──────────────────────────────────────────────────────────────┐  │
+│  STAGE 4: Speaker Diarization (Pyannote)  ←──────────────────┘  │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │ - Model: pyannote/speaker-diarization-3.1                │   │
-│  │ - Identifikasi "siapa bicara kapan"                     │   │
-│  │ - Output: segmentasi speaker dengan timestamp           │   │
-│  │ - Mapping speaker ke label (SPEAKER_00, SPEAKER_01...)  │   │
-│  │ - Matching ke teks transkrip via timestamp              │   │
-│  └──────────────────────┬───────────────────────────────────┘   │
-└─────────────────────────┼─────────────────────────────────────────┘
+│  │ - Caching: per-chunk (MD5 key)                           │   │
+│  │ - Retry: 3x exponential backoff                          │   │
+│  │ - Fallback: VAD jika Pyannote gagal                      │   │
+│  │ - Output: segmentasi speaker dengan timestamp            │   │
+│  │ - Mapping speaker ke label (SPEAKER_00, ...)             │   │
+│  │ - Matching ke teks transkrip via timestamp               │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────┘
                           ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  STAGE 5: AI Enhancement dengan Gemini                          │
@@ -118,6 +123,33 @@ Speaker Diarization (Pyannote) → AI Enhancement (Gemini) → DOCX (Word)
 
 ---
 
+## 2.5 Optimasi Pipeline
+
+### 2.5.1 Paralelisasi Stage 3 & 4
+Stage 3 (Transkripsi) dan Stage 4 (Diarization) berjalan **paralel** karena tidak saling dependen:
+```
+Thread 1: Transkrip chunk_001 → chunk_002 → chunk_003 → ...
+Thread 2: Diarize  chunk_001 → chunk_002 → chunk_003 → ...
+```
+Implementasi via `concurrent.futures.ThreadPoolExecutor` di `risalah/utils.py:run_parallel()`.
+Bisa dinonaktifkan dengan flag `--no-parallel`. Fallback otomatis ke sequential jika salah satu gagal.
+
+### 2.5.2 Retry Mechanism (Exponential Backoff)
+Decorator `@retry(max_attempts=3, delay=2, backoff=2)` di `risalah/utils.py` melindungi semua panggilan API:
+- **Whisper**: Model loading + transcribe per chunk (retry dengan model kecil jika OOM)
+- **AssemblyAI**: Upload + transcribe per chunk (handle rate limit / timeout)
+- **Pyannote**: Pipeline loading + diarization per chunk (handle GPU OOM)
+- **Gemini**: Enhancement API call (handle quota limit)
+
+### 2.5.3 Caching per-Chunk
+Cache otomatis berdasarkan MD5 hash nama chunk:
+- Transkrip: `output/transcripts/{md5}.json`
+- Diarization: `output/diarization/{md5}.json`
+- Jika chunk sudah diproses sebelumnya → skip (load dari cache)
+- Transparan: pengguna tidak perlu konfigurasi
+
+---
+
 ## 3. Struktur File Project
 
 ```
@@ -131,11 +163,13 @@ transkip/
 ├── risalah/                      # 🆕 Module utama risalah
 │   ├── __init__.py
 │   ├── config.py                 # Konfigurasi global
+│   ├── utils.py                  # Retry, caching, parallel execution helpers
 │   ├── audio_processor.py        # Stage 1-2: Ingestion & Split
 │   ├── transcriber.py            # Stage 3: Transkripsi (Whisper/AssemblyAI)
 │   ├── diarizer.py               # Stage 4: Speaker Diarization (Pyannote)
 │   ├── ai_enhancer.py            # Stage 5: Gemini Enhancement
 │   ├── docx_generator.py         # Stage 6: DOCX Generator
+│   ├── file_scanner.py            # Scanner dokumen pendukung
 │   └── pipeline.py               # 🏁 Orkestrator utama
 │
 ├── scripts/                      # 🆕 Script utilitas
@@ -422,15 +456,23 @@ HF_TOKEN=your_token
 
 ### Cara Penggunaan
 ```bash
-# 1. Pipeline lengkap (satu perintah)
+# 1. Pipeline lengkap (satu perintah, paralel otomatis)
 source .venv/bin/activate
 python risalah/pipeline.py rekaman_rapat.mp4
 
-# 2. Atau stage-by-stage
-python risalah/pipeline.py rekaman_rapat.mp4 --stage all
-python risalah/pipeline.py rekaman_rapat.mp4 --stage transcribe-only
+# 2. Gunakan engine tertentu
+python risalah/pipeline.py rekaman_rapat.mp4 --engine assemblyai
 
-# 3. Output DOCX di folder output/docs/
+# 3. Nonaktifkan paralel (jika memory terbatas)
+python risalah/pipeline.py rekaman_rapat.mp4 --no-parallel
+
+# 4. Skip stage tertentu (gunakan cache)
+python risalah/pipeline.py rekaman_rapat.mp4 --skip transcribe diarize
+
+# 5. Preview TXT saja (tanpa DOCX)
+python risalah/pipeline.py rekaman_rapat.mp4 --preview
+
+# 6. Output DOCX di folder output/docs/
 ls output/docs/
 ```
 
@@ -460,6 +502,7 @@ User: Buka DOCX → langsung siap cetak/tanda tangan!
 | **Sprint 4** | AI Enhancement | Stage 5: Gemini integration + prompt engineering |
 | **Sprint 5** | DOCX Output | Stage 6: Word document generator |
 | **Sprint 6** | Integration | Pipeline orkestrasi + testing + dokumentasi |
+| **Sprint 7** | Optimization | Parallel execution + retry + caching (SELESAI) |
 
 ---
 
@@ -473,15 +516,26 @@ User: Buka DOCX → langsung siap cetak/tanda tangan!
 ### Keterbatasan & Mitigasi
 | Keterbatasan | Mitigasi |
 |-------------|----------|
-| Whisper tanpa diarization | Pyannote sebagai post-process |
-| Pyannote butuh GPU (lambda) | Fallback ke CPU (lebih lambat) |
-| Gemini free tier 60q/menit | Batch processing per chunk |
+| Whisper tanpa diarization | Pyannote sebagai post-process (paralel!) |
+| Pyannote butuh GPU (lambda) | Fallback ke CPU atau VAD |
+| Gemini free tier 60q/menit | Retry + exponential backoff + Batch processing |
 | Audio panjang >3 jam | Split 30 menit otomatis |
+| API timeout / rate limit | Retry 3x dengan exponential backoff |
+
+### Optimasi Pipeline
+| Fitur | Manfaat |
+|-------|---------|
+| **Paralel Transkrip + Diarize** | Menghemat ~50% waktu pemrosesan |
+| **Caching per-chunk (MD5)** | Skip chunk yang sudah diproses |
+| **Retry exponential backoff** | Handle API failure tanpa crash |
+| **Fallback berantai** | Paralel→Sequential→VAD; Whisper→model kecil |
+| **ThreadPoolExecutor** | I/O bound task tidak blocking satu sama lain |
 
 ### Optimasi Biaya
 - **100% gratis** jika: Whisper lokal + Pyannote + Gemini free tier
 - **Berbayar minimal** jika: AssemblyAI ($0.01/menit) untuk akurasi maksimal
 - Gemini: 60 permintaan gratis per menit → cukup untuk rapat rata-rata
+- Caching mengurangi API calls berulang
 
 ---
 

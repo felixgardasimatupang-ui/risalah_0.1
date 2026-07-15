@@ -1,0 +1,113 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "build",
+  "instructions": ["AGENTS.md"],
+  "provider": {
+    "9router": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "9router (local)",
+      "options": {
+        "baseURL": "http://localhost:20128/v1"
+      },
+      "models": {
+        "groq/llama-3.3-70b-versatile": {},
+        "groq/meta-llama/llama-4-maverick-17b-128e-instruct": {},
+        "groq/qwen/qwen3-32b": {},
+        "groq/openai/gpt-oss-120b": {},
+        "gemini/gemini-3.1-pro-preview": {},
+        "gemini/gemini-3.1-flash-lite-preview": {},
+        "gemini/gemini-3-flash-preview": {},
+        "gemini/gemma-4-31b-it": {},
+        "cerebras/gpt-oss-120b": {},
+        "cerebras/zai-glm-4.7": {},
+        "cerebras/llama-3.3-70b": {},
+        "cerebras/llama-4-scout-17b-16e-instruct": {},
+        "cerebras/qwen-3-235b-a22b-instruct-2507": {},
+        "cerebras/qwen-3-32b": {}
+      }
+    }
+  },
+  "agent": {
+    "plan": {
+      "description": "Deep reasoning & architecture planning. Use for complex design decisions, sprint planning, architecture reviews.",
+      "mode": "primary",
+      "permission": { "edit": "deny" }
+    },
+    "build": {
+      "description": "General coding and implementation. Default agent for writing code, fixing bugs, refactoring.",
+      "mode": "primary"
+    },
+    "explore": {
+      "description": "Codebase exploration and research. Use for understanding code, finding patterns, impact analysis.",
+      "mode": "subagent"
+    },
+    "backend": {
+      "description": "Backend API (FastAPI, Celery, Redis). Use for routes, tasks, config, WebSocket, schemas, Celery workers.",
+      "mode": "subagent",
+      "model": "9router/groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "color": "#1f77b4"
+    },
+    "pipeline": {
+      "description": "Risalah pipeline (audio, transkripsi, diarization, AI enhancement, DOCX). Use for audio_processor, transcriber, diarizer, ai_enhancer, docx_generator, file_scanner, utils, pipeline modules.",
+      "mode": "subagent",
+      "model": "9router/groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "color": "#2ca02c"
+    },
+    "ui-dev": {
+      "description": "Streamlit UI development. Use for ui/app.py, layout, components, user experience.",
+      "mode": "subagent",
+      "model": "9router/groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "color": "#9467bd"
+    },
+    "devops": {
+      "description": "Docker, Docker Compose, deployment scripts, CI/CD. Use for Dockerfile, docker-compose.yml, scripts/, .env configuration.",
+      "mode": "subagent",
+      "model": "9router/groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "color": "#d62728"
+    },
+    "9router": {
+      "description": "Fast agent using local 9router LLM (Llama 4 Maverick via Groq). Use for quick tasks, brainstorming, lightweight queries.",
+      "mode": "subagent",
+      "model": "9router/groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "color": "#ff6b6b"
+    }
+  },
+  "command": {
+    "run-pipeline": {
+      "description": "Run the risalah pipeline on an audio file or folder",
+      "template": "Jalankan pipeline risalah: source .venv/bin/activate && python risalah/pipeline.py $ARGUMENTS"
+    },
+    "run-api": {
+      "description": "Start the FastAPI backend server locally",
+      "template": "Jalankan server FastAPI: source .venv/bin/activate && uvicorn api.app:app --reload --host 0.0.0.0 --port 8000"
+    },
+    "run-ui": {
+      "description": "Start the Streamlit UI locally",
+      "template": "Jalankan Streamlit UI: source .venv/bin/activate && streamlit run ui/app.py --server.port 8501 --server.address 0.0.0.0"
+    },
+    "docker-up": {
+      "description": "Start all services with Docker Compose",
+      "template": "Jalankan Docker Compose: docker compose up --build -d"
+    },
+    "docker-down": {
+      "description": "Stop all Docker Compose services",
+      "template": "Hentikan semua service: docker compose down"
+    },
+    "setup": {
+      "description": "Install dependencies and setup the project",
+      "template": "Setup project: chmod +x scripts/setup.sh && ./scripts/setup.sh"
+    },
+    "test": {
+      "description": "Run all tests or specific test file",
+      "template": "Jalankan test: source .venv/bin/activate && python -m pytest $ARGUMENTS"
+    },
+    "9router-dashboard": {
+      "description": "Open 9router monitoring dashboard",
+      "template": "Buka 9router dashboard di http://localhost:20128/dashboard"
+    }
+  },
+  "compaction": {
+    "auto": true,
+    "tail_turns": 10
+  }
+}

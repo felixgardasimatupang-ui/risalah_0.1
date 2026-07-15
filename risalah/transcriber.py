@@ -12,10 +12,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CACHE_DIR = os.path.join(PROJECT_ROOT, "output", "transcripts")
 
-def cache_key(chunks, engine):
-    names = "-".join(c["name"] for c in chunks)
-    raw = f"{engine}|{names}"
-    return hashlib.md5(raw.encode()).hexdigest()[:12]
+from risalah.utils import retry, cache_check, make_cache_key
+
 
 def transcribe_with_whisper(chunks, output_dir=None, model_name="large-v3"):
     if output_dir is None:
@@ -28,10 +26,14 @@ def transcribe_with_whisper(chunks, output_dir=None, model_name="large-v3"):
         print("Apple Silicon MPS terdeteksi, GPU acceleration ON")
     print(f"Device: {device.upper()}")
 
+    @retry(max_attempts=3, delay=5, backoff=2)
+    def load_model(m):
+        return whisper.load_model(m, device=device)
+
     model = None
     for m in [model_name, "large-v3", "large", "medium", "small", "base"]:
         try:
-            model = whisper.load_model(m, device=device)
+            model = load_model(m)
             print(f"Model: {m}")
             break
         except Exception as e:
@@ -42,11 +44,16 @@ def transcribe_with_whisper(chunks, output_dir=None, model_name="large-v3"):
 
     all_results = []
     for chunk in tqdm(chunks, desc="Whisper"):
-        try:
-            result = model.transcribe(chunk["mp3"], language="id", verbose=False, fp16=False)
+        chunk_cache_key = make_cache_key(chunk["name"], "whisper")
+
+        def do_transcribe(c=chunk):
+            result = model.transcribe(c["mp3"], language="id", verbose=False, fp16=False)
             segments = [{"start": round(s["start"], 2), "end": round(s["end"], 2), "text": s["text"].strip()}
                         for s in result["segments"]]
-            data = {"chunk": chunk["name"], "text": result["text"].strip(), "segments": segments}
+            return {"chunk": c["name"], "text": result["text"].strip(), "segments": segments}
+
+        try:
+            data = cache_check(output_dir, chunk_cache_key, do_transcribe)
             all_results.append(data)
             json_path = os.path.join(output_dir, f"{data['chunk']}.json")
             with open(json_path, "w", encoding="utf-8") as fp:
@@ -81,29 +88,34 @@ def transcribe_with_assemblyai(chunks, output_dir=None):
 
     all_results = [None] * len(chunks)
 
+    @retry(max_attempts=3, delay=5, backoff=2)
     def transcribe_one(idx, chunk):
-        transcript = transcriber.transcribe(chunk["mp3"], config=config)
-        if transcript.status == aai.TranscriptStatus.error:
-            raise RuntimeError(transcript.error)
+        cache_key = make_cache_key(chunk["name"], "assemblyai")
 
-        segments = []
-        if transcript.utterances:
-            for u in transcript.utterances:
-                segments.append({
-                    "start": round(u.start / 1000, 2),
-                    "end": round(u.end / 1000, 2),
-                    "speaker": f"SPEAKER_{u.speaker}",
-                    "text": u.text,
-                })
-        else:
-            for s in transcript.segments:
-                segments.append({
-                    "start": round(s.start / 1000, 2),
-                    "end": round(s.end / 1000, 2),
-                    "speaker": "SPEAKER_UNKNOWN",
-                    "text": s.text,
-                })
-        return idx, {"chunk": chunk["name"], "text": transcript.text, "segments": segments}
+        def do_transcribe():
+            transcript = transcriber.transcribe(chunk["mp3"], config=config)
+            if transcript.status == aai.TranscriptStatus.error:
+                raise RuntimeError(transcript.error)
+            segments = []
+            if transcript.utterances:
+                for u in transcript.utterances:
+                    segments.append({
+                        "start": round(u.start / 1000, 2),
+                        "end": round(u.end / 1000, 2),
+                        "speaker": f"SPEAKER_{u.speaker}",
+                        "text": u.text,
+                    })
+            else:
+                for s in transcript.segments:
+                    segments.append({
+                        "start": round(s.start / 1000, 2),
+                        "end": round(s.end / 1000, 2),
+                        "speaker": "SPEAKER_UNKNOWN",
+                        "text": s.text,
+                    })
+            return {"chunk": chunk["name"], "text": transcript.text, "segments": segments}
+
+        return cache_check(output_dir, cache_key, do_transcribe)
 
     with ThreadPoolExecutor(max_workers=3) as ex:
         futures = {ex.submit(transcribe_one, i, c): i for i, c in enumerate(chunks)}
@@ -200,14 +212,6 @@ def transcribe_all(chunks, engine="whisper", output_dir=None):
         output_dir = CACHE_DIR
     os.makedirs(output_dir, exist_ok=True)
 
-    ck = cache_key(chunks, engine)
-    cache_path = os.path.join(output_dir, f"cache_{ck}.json")
-    if os.path.exists(cache_path):
-        with open(cache_path) as f:
-            cached = json.load(f)
-        print(f"Gunakan cache transkripsi ({engine})")
-        return cached
-
     engines = {
         "whisper": transcribe_with_whisper,
         "assemblyai": transcribe_with_assemblyai,
@@ -217,11 +221,8 @@ def transcribe_all(chunks, engine="whisper", output_dir=None):
     if engine not in engines:
         raise ValueError(f"Engine '{engine}' tidak dikenal. Pilih: {list(engines.keys())}")
 
-    result = engines[engine](chunks, output_dir)
-
-    with open(cache_path, "w", encoding="utf-8") as f:
-        json.dump(result, f)
-
+    ck = make_cache_key("transcribe_all", engine, *[c["name"] for c in chunks])
+    result = cache_check(output_dir, ck, lambda: engines[engine](chunks, output_dir))
     return result
 
 if __name__ == "__main__":

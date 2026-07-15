@@ -7,6 +7,8 @@ from pydub.silence import detect_silence
 from tqdm import tqdm
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 DEFAULT_CHUNK_MINUTES = 30
 
 SUPPORTED_FORMATS = {
@@ -120,9 +122,60 @@ def process_audio(file_path, output_dir=None, chunk_minutes=DEFAULT_CHUNK_MINUTE
     print(f"OK: {num_chunks} chunk -> {output_dir}")
     return metadata
 
+def process_folder(folder_path, output_base=None, chunk_minutes=DEFAULT_CHUNK_MINUTES):
+    from risalah.file_scanner import scan_folder
+
+    scan = scan_folder(folder_path)
+    audio_files = scan.get("audio_files", [])
+
+    if not audio_files:
+        print(f"Tidak ada file audio di: {folder_path}")
+        return []
+
+    if output_base is None:
+        output_base = os.path.join(PROJECT_ROOT, "output", "chunks")
+
+    results = []
+    for f in audio_files:
+        print(f"\n--- {f['name']} ---")
+        try:
+            meta = process_audio(f["path"],
+                                 output_dir=os.path.join(output_base, f["name"]),
+                                 chunk_minutes=chunk_minutes)
+            results.append(meta)
+        except Exception as e:
+            print(f"  GAGAL: {e}")
+
+    summary = {
+        "folder": os.path.abspath(folder_path),
+        "total_files": len(audio_files),
+        "processed": len(results),
+        "chunk_minutes": chunk_minutes,
+        "results": results,
+    }
+    summary_path = os.path.join(output_base, "folder_summary.json")
+    os.makedirs(output_base, exist_ok=True)
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
+
+    print(f"\n{'='*50}")
+    print(f"SELESAI: {len(results)}/{len(audio_files)} audio diproses")
+    for r in results:
+        print(f"  {r['original_file']} -> {r['num_chunks']} chunk")
+    print(f"{'='*50}")
+    return results
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python risalah/audio_processor.py <file_audio> [chunk_minutes]")
+        print("Usage:")
+        print("  python risalah/audio_processor.py <file_audio> [chunk_minutes]")
+        print("  python risalah/audio_processor.py --folder <folder_path> [chunk_minutes]")
         sys.exit(1)
-    cm = int(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_CHUNK_MINUTES
-    process_audio(sys.argv[1], chunk_minutes=cm)
+
+    cm = int(sys.argv[3]) if len(sys.argv) > 3 else DEFAULT_CHUNK_MINUTES
+
+    if sys.argv[1] == "--folder":
+        process_folder(sys.argv[2], chunk_minutes=cm)
+    else:
+        process_audio(sys.argv[1], chunk_minutes=cm)

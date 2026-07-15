@@ -1,0 +1,49 @@
+---
+title: Pipeline Risalah Rapat - High Level Flow
+---
+flowchart TB
+    subgraph INPUT["📥 INPUT"]
+        A(["Audio File<br/>(MP3/MP4/WAV)"])
+    end
+
+    subgraph S1["STAGE 1-2: Audio Processing"]
+        B["Validasi & Konversi<br/>→ WAV 16kHz mono"]
+        C{"Split 30 menit<br/>per chunk"}
+        B --> C
+    end
+
+    subgraph S2["STAGE 3-4: ⚡ PARALEL (ThreadPoolExecutor)"]
+        direction LR
+        D["TRANSCRIPTION<br/>Whisper / AssemblyAI"]
+        E["DIARIZATION<br/>Pyannote / SpeechBrain / VAD"]
+    end
+
+    subgraph S3["STAGE 5: AI Enhancement"]
+        F["AI ENHANCEMENT<br/>Groq → 9router → Gemini"]
+    end
+
+    subgraph S4["STAGE 6: DOCX Generation"]
+        G["Generate DOCX<br/>Format Risalah Resmi"]
+    end
+
+    subgraph OUT["📄 OUTPUT"]
+        H(["DOCX Siap Cetak<br/>& Tanda Tangan"])
+    end
+
+    A --> B
+    B --> C
+    C --> D
+    C --> E
+    D --> F
+    E --> F
+    F --> G
+    G --> H
+
+    style A fill:#dbeafe,stroke:#3b82f6,stroke-width:2px
+    style B fill:#fef3c7,stroke:#f59e0b,stroke-width:2px
+    style C fill:#fef3c7,stroke:#f59e0b,stroke-width:2px
+    style D fill:#d1fae5,stroke:#10b981,stroke-width:2px
+    style E fill:#d1fae5,stroke:#10b981,stroke-width:2px
+    style F fill:#ede9fe,stroke:#8b5cf6,stroke-width:2px
+    style G fill:#fce7f3,stroke:#ec4899,stroke-width:2px
+    style H fill:#dbeafe,stroke:#3b82f6,stroke-width:2px

@@ -1,0 +1,20 @@
+---
+title: AI Enhancement - Fallback Chain
+---
+flowchart LR
+    START(["Enhancement Start"]) -->
+    TRY{"Groq API<br/>(prioritas)"}
+    TRY -->|"✅ Success"| DONE(["DONE ✓"])
+    TRY -->|"❌ Fail (429/timeout)"| TRY2{"9router API<br/>(fallback 1)"}
+    TRY2 -->|"✅ Success"| DONE
+    TRY2 -->|"❌ Fail"| TRY3{"Gemini API<br/>(fallback 2)"}
+    TRY3 -->|"✅ Success"| DONE
+    TRY3 -->|"❌ Fail"| FALLBACK["build_fallback()<br/>Data kosong terstruktur"]
+    FALLBACK --> DONE
+
+    style TRY fill:#22c55e,color:#000,stroke-width:2px
+    style TRY2 fill:#eab308,color:#000,stroke-width:2px
+    style TRY3 fill:#f97316,color:#fff,stroke-width:2px
+    style FALLBACK fill:#6b7280,color:#fff,stroke-width:2px
+    style DONE fill:#3b82f6,color:#fff,stroke-width:2px
+    style START fill:#dbeafe,stroke:#3b82f6,stroke-width:2px

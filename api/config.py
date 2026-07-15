@@ -3,6 +3,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+LLM_CONFIGS = [
+    {"name": "9router", "base": os.getenv("NINEROUTER_BASE_URL", "http://localhost:20128/v1"),
+     "key": os.getenv("NINEROUTER_API_KEY", ""), "model": os.getenv("NINEROUTER_MODEL", "light-free")},
+    {"name": "Groq", "base": os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+     "key": os.getenv("GROQ_API_KEY", ""), "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")},
+]
+
 class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY", "")
@@ -19,5 +26,7 @@ class Config:
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     UPLOAD_DIR = os.path.join(PROJECT_ROOT, "uploads")
     OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
+
+    LLM_CONFIGS = LLM_CONFIGS
 
 config = Config()

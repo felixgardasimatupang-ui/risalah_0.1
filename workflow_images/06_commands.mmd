@@ -1,0 +1,24 @@
+---
+title: Command Flow & Flags
+---
+flowchart TD
+    CLI["python risalah/pipeline.py<br/>rekaman.mp4"] --> LOAD["Load .env"]
+    LOAD --> CHECK{"--skip ?"}
+    CHECK -->|skip transcribe| D1["Transkripsi skipped<br/>(pakai cache)"]
+    CHECK -->|skip diarize| D2["Diarization skipped<br/>(pakai cache)"]
+    CHECK -->|default| FULL["Full pipeline"]
+    
+    FULL --> PCHECK{"--no-parallel ?"}
+    PCHECK -->|No| PAR["⚡ PARALEL<br/>ThreadPoolExecutor"]
+    PCHECK -->|Yes| SEQ["Sequential<br/>Transcribe → Diarize"]
+    
+    PAR --> MERGE["Merge Transcript + Diarization"]
+    SEQ --> MERGE
+    
+    MERGE --> AI["AI Enhancement<br/>Groq → 9router → Gemini"]
+    AI --> PREV{"--preview ?"}
+    PREV -->|Yes| TXT["📄 Output TXT Preview"]
+    PREV -->|No| DOCX["📄 Generate DOCX"]
+    
+    TXT --> END(["DONE ✓"])
+    DOCX --> END

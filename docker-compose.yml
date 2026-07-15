@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   redis:
     image: redis:7-alpine
@@ -8,6 +6,24 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  9router:
+    image: node:20-alpine
+    ports:
+      - "20128:20128"
+    command: sh -c "npm i -g 9router@latest --prefer-online && 9router --port 20128 --no-browser"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:20128/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   api:
     build:
@@ -20,13 +36,28 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
       - HF_TOKEN=${HF_TOKEN}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_BASE_URL=${GROQ_BASE_URL}
+      - GROQ_MODEL=${GROQ_MODEL}
+      - NINEROUTER_API_KEY=${NINEROUTER_API_KEY}
+      - NINEROUTER_BASE_URL=http://9router:20128/v1
+      - NINEROUTER_MODEL=${NINEROUTER_MODEL}
     volumes:
       - ./uploads:/app/uploads
       - ./output:/app/output
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      9router:
+        condition: service_healthy
     command: uvicorn api.app:app --host 0.0.0.0 --port 8000
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   worker:
     build:
@@ -37,12 +68,31 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
       - HF_TOKEN=${HF_TOKEN}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_BASE_URL=${GROQ_BASE_URL}
+      - GROQ_MODEL=${GROQ_MODEL}
+      - NINEROUTER_API_KEY=${NINEROUTER_API_KEY}
+      - NINEROUTER_BASE_URL=http://9router:20128/v1
+      - NINEROUTER_MODEL=${NINEROUTER_MODEL}
     volumes:
       - ./uploads:/app/uploads
       - ./output:/app/output
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     command: celery -A api.celery_app worker --loglevel=info --concurrency=2
+    restart: unless-stopped
+
+  flower:
+    image: mher/flower:2.0
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - FLOWER_PORT=5555
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   ui:
@@ -54,7 +104,8 @@ services:
     environment:
       - API_URL=http://api:8000/api
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     command: streamlit run ui/app.py --server.port 8501 --server.address 0.0.0.0
     restart: unless-stopped
 
