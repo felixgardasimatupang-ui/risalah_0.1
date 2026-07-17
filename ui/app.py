@@ -43,25 +43,30 @@ st.markdown(
 
 
 def api_health():
+    return _api_req("GET", "/health", timeout=5)
+
+
+def _api_req(method, path, **kwargs):
     try:
-        r = requests.get(f"{API_BASE}/health", timeout=5)
+        r = requests.request(method, f"{API_BASE}{path}", timeout=kwargs.pop("timeout", 10), **kwargs)
         if r.ok:
             return r.json()
-    except Exception:
-        pass
-    return None
+        return {"error": f"HTTP {r.status_code}: {r.text[:200]}"}
+    except requests.ConnectionError:
+        return {"error": "Server API tidak terhubung"}
+    except requests.Timeout:
+        return {"error": "Request timeout"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def upload_file(file_bytes, filename):
-    r = requests.post(f"{API_BASE}/upload", files={"file": (filename, file_bytes)}, timeout=60)
-    if r.ok:
-        return r.json()
-    return None
+    return _api_req("POST", "/upload", files={"file": (filename, file_bytes)}, timeout=60)
 
 
 def start_job(file_path, file_name, engine, chunk_minutes, title, classification, doc_number):
-    r = requests.post(
-        f"{API_BASE}/transcribe",
+    return _api_req(
+        "POST", "/transcribe",
         data={
             "file_path": file_path,
             "file_name": file_name,
@@ -71,18 +76,15 @@ def start_job(file_path, file_name, engine, chunk_minutes, title, classification
             "classification": classification,
             "doc_number": doc_number,
         },
-        timeout=10,
+        timeout=15,
     )
-    if r.ok:
-        return r.json()
-    return None
 
 
 def get_jobs():
     try:
-        r = requests.get(f"{API_BASE}/jobs?limit=50", timeout=5)
-        if r.ok:
-            jobs = r.json().get("jobs", [])
+        d = _api_req("GET", "/jobs?limit=50", timeout=5)
+        if d and "error" not in d:
+            jobs = d.get("jobs", [])
             cache_jobs(jobs)
             return jobs
     except Exception:
@@ -92,11 +94,10 @@ def get_jobs():
 
 def get_job(job_id):
     try:
-        r = requests.get(f"{API_BASE}/jobs/{job_id}", timeout=5)
-        if r.ok:
-            data = r.json()
-            cache_jobs([data])
-            return data
+        d = _api_req("GET", f"/jobs/{job_id}", timeout=5)
+        if d and "error" not in d:
+            cache_jobs([d])
+            return d
     except Exception:
         pass
     cached = get_cached_jobs()
@@ -107,9 +108,13 @@ def get_job(job_id):
 
 
 def download_result(job_id):
-    r = requests.get(f"{API_BASE}/download/{job_id}", timeout=10)
-    if r.ok:
-        return r.content
+    """Return DOCX bytes for a completed job."""
+    try:
+        r = requests.get(f"{API_BASE}/download/{job_id}", timeout=10)
+        if r.ok:
+            return r.content
+    except Exception:
+        pass
     return None
 
 
@@ -197,7 +202,10 @@ if page == "Upload & Transkripsi":
                 with st.spinner("Upload & submit job..."):
                     if uploaded_file:
                         result = upload_file(uploaded_file.getvalue(), uploaded_file.name)
-                        if result:
+                        err = result.get("error") if isinstance(result, dict) else None
+                        if err:
+                            st.error(f"Upload gagal: {err}")
+                        elif result:
                             job = start_job(
                                 result["file_path"],
                                 result["file_name"],
@@ -207,13 +215,16 @@ if page == "Upload & Transkripsi":
                                 classification,
                                 doc_number,
                             )
-                            if job:
+                            err2 = job.get("error") if isinstance(job, dict) else None
+                            if err2:
+                                st.error(f"Submit gagal: {err2}")
+                            elif job:
                                 st.success(f"Job {job['id']} dimulai!")
                                 st.session_state["active_job"] = job["id"]
                             else:
-                                st.error("Gagal submit job")
+                                st.error("Gagal submit job: respon kosong")
                         else:
-                            st.error("Gagal upload file")
+                            st.error("Gagal upload file: respon kosong")
                     elif folder_path:
                         if os.path.exists(folder_path):
                             job = start_job(
@@ -225,11 +236,14 @@ if page == "Upload & Transkripsi":
                                 classification,
                                 doc_number,
                             )
-                            if job:
+                            err = job.get("error") if isinstance(job, dict) else None
+                            if err:
+                                st.error(f"Submit folder gagal: {err}")
+                            elif job:
                                 st.success(f"Job folder {job['id']} dimulai!")
                                 st.session_state["active_job"] = job["id"]
                             else:
-                                st.error("Gagal submit job folder")
+                                st.error("Gagal submit job folder: respon kosong")
                         else:
                             st.error(f"Folder tidak ditemukan: {folder_path}")
 
