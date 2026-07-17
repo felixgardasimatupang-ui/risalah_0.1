@@ -27,7 +27,7 @@ SUPPORTED_FORMATS = {
 }
 
 
-def validate_file(file_path):
+def validate_file(file_path) -> None:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File tidak ditemukan: {file_path}")
     size_mb = os.path.getsize(file_path) / (1024 * 1024)
@@ -39,7 +39,7 @@ def validate_file(file_path):
     return True
 
 
-def convert_to_wav_mono(audio, target_sr=16000):
+def convert_to_wav_mono(audio, target_sr=16000) -> None:
     if audio.channels > 1:
         audio = audio.set_channels(1)
     if audio.frame_rate != target_sr:
@@ -47,7 +47,7 @@ def convert_to_wav_mono(audio, target_sr=16000):
     return audio
 
 
-def normalize_volume_intelligent(audio, target_dbfs=-20.0):
+def normalize_volume_intelligent(audio, target_dbfs=-20.0) -> None:
     noise_segments = detect_silence(audio, min_silence_len=500, silence_thresh=-50, seek_step=100)
     if noise_segments:
         noise_sample = audio[noise_segments[0][0] : noise_segments[0][1]]
@@ -63,7 +63,7 @@ def normalize_volume_intelligent(audio, target_dbfs=-20.0):
     return audio.apply_gain(gain)
 
 
-def process_audio(file_path, output_dir=None, chunk_minutes=DEFAULT_CHUNK_MINUTES):
+def process_audio(file_path, output_dir=None, chunk_minutes=DEFAULT_CHUNK_MINUTES) -> None:
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "chunks")
     os.makedirs(output_dir, exist_ok=True)
@@ -138,7 +138,7 @@ def process_audio(file_path, output_dir=None, chunk_minutes=DEFAULT_CHUNK_MINUTE
     return metadata
 
 
-def process_folder(folder_path, output_base=None, chunk_minutes=DEFAULT_CHUNK_MINUTES):
+def process_folder(folder_path, output_base=None, chunk_minutes=DEFAULT_CHUNK_MINUTES) -> None:
     from risalah.file_scanner import scan_folder
 
     scan = scan_folder(folder_path)

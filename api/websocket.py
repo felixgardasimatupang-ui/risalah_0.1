@@ -12,7 +12,7 @@ ws_router = APIRouter(prefix="/api/ws", tags=["websocket"])
 
 
 @ws_router.websocket("/stream/{job_id}")
-async def websocket_job_progress(websocket: WebSocket, job_id: str):
+async def websocket_job_progress(websocket: WebSocket, job_id: str) -> None:
     await websocket.accept()
     try:
         import redis as redis_lib
@@ -53,7 +53,7 @@ async def websocket_job_progress(websocket: WebSocket, job_id: str):
 
 
 @ws_router.websocket("/live-transcribe")
-async def websocket_live_transcribe(websocket: WebSocket):
+async def websocket_live_transcribe(websocket: WebSocket) -> None:
     await websocket.accept()
     session_id = str(uuid.uuid4())[:8]
     await websocket.send_json(

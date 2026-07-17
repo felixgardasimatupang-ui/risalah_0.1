@@ -30,12 +30,12 @@ _EN_LABELS = {
 }
 
 
-def _sec(label):
+def _sec(label) -> None:
     lang = os.getenv("RISALAH_LANG", "id")[:2]
     return _EN_LABELS.get(label, label) if lang == "en" else label
 
 
-def generate_pdf(enhanced, metadata=None, output_path=None, title="RISALAH RAPAT"):
+def generate_pdf(enhanced, metadata=None, output_path=None, title="RISALAH RAPAT") -> None:
     """Generate A4 PDF from enhanced data. Returns path or BytesIO."""
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.add_page()

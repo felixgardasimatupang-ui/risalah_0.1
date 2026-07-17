@@ -15,7 +15,7 @@ GLOBAL_SPEAKER_MAP = {}
 CACHE_DIR_DIAR = os.path.join(PROJECT_ROOT, "output", "diarization")
 
 
-def run_diarization(chunks, output_dir=None):
+def run_diarization(chunks, output_dir=None) -> None:
     if output_dir is None:
         output_dir = CACHE_DIR_DIAR
     os.makedirs(output_dir, exist_ok=True)
@@ -24,7 +24,7 @@ def run_diarization(chunks, output_dir=None):
     return cache_check(output_dir, ck, lambda: _run_diarization_impl(chunks, output_dir))
 
 
-def _run_diarization_impl(chunks, output_dir):
+def _run_diarization_impl(chunks, output_dir) -> None:
     hf_token = os.getenv("HF_TOKEN")
     if hf_token and hf_token not in ("", "your_huggingface_token_here"):
         return run_pyannote_diarization(chunks, output_dir)
@@ -39,7 +39,7 @@ def _run_diarization_impl(chunks, output_dir):
         return run_vad_segmentation(chunks, output_dir)
 
 
-def run_pyannote_diarization(chunks, output_dir=None):
+def run_pyannote_diarization(chunks, output_dir=None) -> None:
     from pyannote.audio import Pipeline
     from pyannote.audio.pipelines.utils.hook import ProgressHook
 
@@ -61,7 +61,7 @@ def run_pyannote_diarization(chunks, output_dir=None):
         try:
 
             @retry(max_attempts=2, delay=10, backoff=2)
-            def load_pipeline(m):
+            def load_pipeline(m) -> None:
                 return Pipeline.from_pretrained(m)
 
             pipeline = load_pipeline(model_name)
@@ -86,7 +86,7 @@ def run_pyannote_diarization(chunks, output_dir=None):
         try:
 
             @retry(max_attempts=2, delay=5, backoff=2)
-            def process_chunk(c):
+            def process_chunk(c) -> None:
                 with ProgressHook() as hook:
                     return pipeline(c["wav"], hook=hook)
 
@@ -121,7 +121,7 @@ def run_pyannote_diarization(chunks, output_dir=None):
     return all_results
 
 
-def run_speechbrain_diarization(chunks, output_dir=None):
+def run_speechbrain_diarization(chunks, output_dir=None) -> None:
     import numpy as np
     from sklearn.cluster import AgglomerativeClustering
     from speechbrain.inference.speaker import SpeakerRecognition
@@ -250,7 +250,7 @@ def run_speechbrain_diarization(chunks, output_dir=None):
     return all_results
 
 
-def run_vad_segmentation(chunks, output_dir=None):
+def run_vad_segmentation(chunks, output_dir=None) -> None:
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "diarization")
     os.makedirs(output_dir, exist_ok=True)
@@ -314,7 +314,7 @@ def run_vad_segmentation(chunks, output_dir=None):
     return all_results
 
 
-def merge_transcript_with_diarization(transcript_data, diarization_data):
+def merge_transcript_with_diarization(transcript_data, diarization_data) -> None:
     merged = []
     for trans_chunk in transcript_data:
         chunk_name = trans_chunk["chunk"]
@@ -348,7 +348,7 @@ def merge_transcript_with_diarization(transcript_data, diarization_data):
     return merged
 
 
-def run_diarization_pipeline(audio_chunks, transcript_segments, output_dir=None):
+def run_diarization_pipeline(audio_chunks, transcript_segments, output_dir=None) -> None:
     if output_dir is None:
         output_dir = CACHE_DIR_DIAR
     os.makedirs(output_dir, exist_ok=True)

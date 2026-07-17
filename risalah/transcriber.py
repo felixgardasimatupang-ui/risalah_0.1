@@ -12,7 +12,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CACHE_DIR = os.path.join(PROJECT_ROOT, "output", "transcripts")
 
 
-def transcribe_with_whisper(chunks, output_dir=None, model_name=None, lang=None):
+def transcribe_with_whisper(chunks, output_dir=None, model_name=None, lang=None) -> None:
     if model_name is None:
         model_name = os.getenv("WHISPER_MODEL", "large-v3")
     if output_dir is None:
@@ -25,7 +25,7 @@ def transcribe_with_whisper(chunks, output_dir=None, model_name=None, lang=None)
     print(f"Device: {device.upper()}")
 
     @retry(max_attempts=3, delay=5, backoff=2)
-    def load_model(m):
+    def load_model(m) -> None:
         return whisper.load_model(m, device=device)
 
     model = None
@@ -44,7 +44,7 @@ def transcribe_with_whisper(chunks, output_dir=None, model_name=None, lang=None)
     for chunk in tqdm(chunks, desc="Whisper"):
         chunk_cache_key = make_cache_key(chunk["name"], "whisper")
 
-        def do_transcribe(c=chunk):
+        def do_transcribe(c=chunk) -> None:
             result = model.transcribe(c["mp3"], language=lang, verbose=False, fp16=False)
             segments = [
                 {
@@ -72,7 +72,7 @@ def transcribe_with_whisper(chunks, output_dir=None, model_name=None, lang=None)
     return all_results
 
 
-def transcribe_with_assemblyai(chunks, output_dir=None, lang=None):
+def transcribe_with_assemblyai(chunks, output_dir=None, lang=None) -> None:
     import assemblyai as aai
     from dotenv import load_dotenv
 
@@ -98,10 +98,10 @@ def transcribe_with_assemblyai(chunks, output_dir=None, lang=None):
     all_results = [None] * len(chunks)
 
     @retry(max_attempts=3, delay=5, backoff=2)
-    def transcribe_one(idx, chunk):
+    def transcribe_one(idx, chunk) -> None:
         cache_key = make_cache_key(chunk["name"], "assemblyai")
 
-        def do_transcribe():
+        def do_transcribe() -> None:
             transcript = transcriber.transcribe(chunk["mp3"], config=config)
             if transcript.status == aai.TranscriptStatus.error:
                 raise RuntimeError(transcript.error)
@@ -145,7 +145,7 @@ def transcribe_with_assemblyai(chunks, output_dir=None, lang=None):
     return all_results
 
 
-def transcribe_all(chunks, engine="whisper", output_dir=None, lang=None):
+def transcribe_all(chunks, engine="whisper", output_dir=None, lang=None) -> None:
     if output_dir is None:
         output_dir = CACHE_DIR
     os.makedirs(output_dir, exist_ok=True)

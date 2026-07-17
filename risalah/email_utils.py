@@ -8,7 +8,7 @@ from email.utils import formatdate
 from email import encoders
 
 
-def send_docx_email(to_email, subject, body_text, docx_bytes, filename="risalah.docx"):
+def send_docx_email(to_email, subject, body_text, docx_bytes, filename="risalah.docx") -> None:
     """Send DOCX as email attachment via SMTP. Returns (ok, message)."""
     host = os.getenv("SMTP_HOST", "")
     port = int(os.getenv("SMTP_PORT", "587"))

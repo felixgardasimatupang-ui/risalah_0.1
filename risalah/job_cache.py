@@ -17,7 +17,7 @@ _ENHANCED_DIR = os.path.join(
 )
 
 
-def _get_conn():
+def _get_conn() -> None:
     os.makedirs(os.path.dirname(_DB_PATH), exist_ok=True)
     conn = sqlite3.connect(_DB_PATH)
     conn.execute(
@@ -39,7 +39,7 @@ def _get_conn():
     return conn
 
 
-def _migrate(conn):
+def _migrate(conn) -> None:
     """Add full_text column if missing (faster than PRAGMA check)."""
     try:
         conn.execute("ALTER TABLE cached_jobs ADD COLUMN full_text TEXT DEFAULT ''")
@@ -47,7 +47,7 @@ def _migrate(conn):
         pass  # already exists
 
 
-def _load_full_text(data):
+def _load_full_text(data) -> None:
     """Try to populate full_text from enhanced JSON on disk."""
     text = data.get("full_text", "")
     if text:
@@ -70,7 +70,7 @@ def _load_full_text(data):
         return data.get("preview_text", "")
 
 
-def cache_job(job_data: dict):
+def cache_job(job_data: dict) -> None:
     """Insert or update a single job in the local cache."""
     data = job_data.copy()
     full_text = _load_full_text(data)
@@ -97,7 +97,7 @@ def cache_job(job_data: dict):
     conn.close()
 
 
-def cache_jobs(jobs: list[dict]):
+def cache_jobs(jobs: list[dict]) -> None:
     """Cache multiple jobs at once."""
     conn = _get_conn()
     now = time.time()
@@ -179,7 +179,7 @@ def search_archive(query: str, limit: int = 50) -> list[dict]:
     ]
 
 
-def clear_cache():
+def clear_cache() -> None:
     """Delete all cached jobs."""
     conn = _get_conn()
     conn.execute("DELETE FROM cached_jobs")

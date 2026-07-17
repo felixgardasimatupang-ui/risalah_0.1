@@ -13,7 +13,7 @@ from api.tasks import get_job_status, process_audio_task, process_folder_task, u
 router = APIRouter(prefix="/api", tags=["api"])
 
 
-def _check_redis():
+def _check_redis() -> None:
     try:
         import redis
 
@@ -41,7 +41,7 @@ def _job_to_response(raw: dict) -> JobResponse:
 
 
 @router.get("/health", response_model=HealthResponse)
-def health_check():
+def health_check() -> None:
     redis_ok = _check_redis()
     return HealthResponse(
         status="ok" if redis_ok else "degraded",
@@ -55,7 +55,7 @@ MAX_SIZE_BYTES = 500 * 1024 * 1024
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)):  # noqa: B008
+async def upload_file(file: UploadFile = File(...)) -> dict:  # noqa: B008
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_EXTS:
         raise HTTPException(400, f"Tipe file '{ext}' tidak diizinkan. Gunakan: {', '.join(sorted(ALLOWED_EXTS))}")
@@ -87,7 +87,7 @@ async def create_transcribe_job(
     classification: str = Form("BIASA"),
     doc_number: str = Form("_______________"),
     lang: str = Form("id"),
-):
+) -> None:
     if not os.path.exists(file_path):
         raise HTTPException(400, f"File tidak ditemukan: {file_path}")
 
@@ -119,7 +119,7 @@ async def create_transcribe_job(
 
 
 @router.get("/jobs", response_model=JobListResponse)
-def list_jobs(limit: int = 50, offset: int = 0):
+def list_jobs(limit: int = 50, offset: int = 0) -> None:
     try:
         import redis
 
@@ -137,7 +137,7 @@ def list_jobs(limit: int = 50, offset: int = 0):
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
-def get_job(job_id: str):
+def get_job(job_id: str) -> None:
     raw = get_job_status(job_id)
     if not raw:
         raise HTTPException(404, f"Job {job_id} tidak ditemukan")
@@ -145,7 +145,7 @@ def get_job(job_id: str):
 
 
 @router.delete("/jobs/{job_id}", response_model=JobResponse)
-def cancel_job(job_id: str):
+def cancel_job(job_id: str) -> None:
     raw = get_job_status(job_id)
     if not raw:
         raise HTTPException(404, f"Job {job_id} tidak ditemukan")
@@ -160,7 +160,7 @@ def cancel_job(job_id: str):
 
 
 @router.get("/download/{job_id}")
-def download_result(job_id: str):
+def download_result(job_id: str) -> None:
     raw = get_job_status(job_id)
     if not raw:
         raise HTTPException(404, "Job tidak ditemukan")
@@ -171,7 +171,7 @@ def download_result(job_id: str):
 
 
 @router.get("/download/{job_id}/pdf")
-def download_pdf(job_id: str):
+def download_pdf(job_id: str) -> None:
     raw = get_job_status(job_id)
     if not raw:
         raise HTTPException(404, "Job tidak ditemukan")
@@ -206,8 +206,8 @@ def download_pdf(job_id: str):
 
 
 @router.get("/stream/{job_id}")
-async def stream_job_progress(job_id: str):
-    async def event_generator():
+async def stream_job_progress(job_id: str) -> None:
+    async def event_generator() -> None:
         import redis as redis_lib
 
         r = redis_lib.from_url(config.REDIS_URL)

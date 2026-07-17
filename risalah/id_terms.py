@@ -392,7 +392,7 @@ SLANG = {
 }
 
 # ── Merge all corrections (longer keys first → avoid partial match) ──
-def _build_combined():
+def _build_combined() -> None:
     combined = {}
     for d in [RAPAT, INSTITUSI, JABATAN, DAERAH, LEMBAGA, DOKUMEN, ASR_ERRORS, SLANG]:
         combined.update(d)

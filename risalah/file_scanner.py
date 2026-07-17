@@ -23,7 +23,7 @@ DOC_EXTS = {".docx", ".doc", ".pdf", ".txt", ".rtf", ".md", ".csv", ".xlsx", ".x
 ALL_EXTS = AUDIO_EXTS | IMAGE_EXTS | DOC_EXTS
 
 
-def classify(ext):
+def classify(ext) -> None:
     if ext in AUDIO_EXTS:
         return "audio"
     if ext in IMAGE_EXTS:
@@ -37,7 +37,7 @@ def classify(ext):
     return "other"
 
 
-def scan_folder(folder_path):
+def scan_folder(folder_path) -> None:
     if not os.path.exists(folder_path):
         raise FileNotFoundError(f"Folder tidak ditemukan: {folder_path}")
 
@@ -83,12 +83,12 @@ def scan_folder(folder_path):
     return result
 
 
-def read_txt(fp):
+def read_txt(fp) -> None:
     with open(fp, encoding="utf-8", errors="replace") as f:
         return f.read()
 
 
-def read_docx(fp):
+def read_docx(fp) -> None:
     from docx import Document
 
     doc = Document(fp)
@@ -104,7 +104,7 @@ def read_docx(fp):
     return "\n".join(parts)
 
 
-def read_pdf(fp):
+def read_pdf(fp) -> None:
     import fitz
 
     doc = fitz.open(fp)
@@ -127,7 +127,7 @@ def read_pdf(fp):
     return "\n".join(lines)
 
 
-def read_image(fp):
+def read_image(fp) -> None:
     from dotenv import load_dotenv
 
     load_dotenv()
@@ -193,7 +193,7 @@ def read_image(fp):
         return "[OCR SKIP]"
 
 
-def read_spreadsheet(fp):
+def read_spreadsheet(fp) -> None:
     import csv
 
     ext = os.path.splitext(fp)[1].lower()
@@ -222,7 +222,7 @@ def read_spreadsheet(fp):
     return "\n".join(lines)
 
 
-def extract_all_text(scan_result, output_dir=None):
+def extract_all_text(scan_result, output_dir=None) -> None:
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "extracted_text")
     os.makedirs(output_dir, exist_ok=True)

@@ -9,7 +9,7 @@ from api.config import config
 sys.path.insert(0, config.PROJECT_ROOT)
 
 
-def update_job_status(job_id, status, progress=0, message="", result_path=None, preview_text=None):
+def update_job_status(job_id, status, progress=0, message="", result_path=None, preview_text=None) -> None:
     import redis as redis_lib
 
     r = redis_lib.from_url(config.REDIS_URL)
@@ -36,7 +36,7 @@ def update_job_status(job_id, status, progress=0, message="", result_path=None, 
     return data
 
 
-def get_job_status(job_id):
+def get_job_status(job_id) -> None:
     import redis as redis_lib
 
     r = redis_lib.from_url(config.REDIS_URL)
@@ -58,7 +58,7 @@ def process_audio_task(
     classification="BIASA",
     doc_number="_______________",
     lang="id",
-):
+) -> None:
     try:
         update_job_status(job_id, "running", 5, "Memulai pipeline...")
 
@@ -75,10 +75,10 @@ def process_audio_task(
         from risalah.diarizer import merge_transcript_with_diarization, run_diarization
         from risalah.utils import run_parallel
 
-        def do_transcribe():
+        def do_transcribe() -> None:
             return transcribe_all(meta["chunks"], engine, lang=lang)
 
-        def do_diarize():
+        def do_diarize() -> None:
             return run_diarization(meta["chunks"])
 
         t_result = None
@@ -136,7 +136,7 @@ def process_folder_task(
     classification="BIASA",
     doc_number="_______________",
     lang="id",
-):
+) -> None:
     try:
         update_job_status(job_id, "running", 5, "Scanning folder...")
 
@@ -194,10 +194,10 @@ def process_folder_task(
 
             meta = process_audio(af, chunk_minutes=chunk_minutes)
 
-            def do_transcribe_inner(meta=meta):
+            def do_transcribe_inner(meta=meta) -> None:
                 return transcribe_all(meta["chunks"], engine, lang=lang)
 
-            def do_diarize_inner(meta=meta):
+            def do_diarize_inner(meta=meta) -> None:
                 return run_diarization(meta["chunks"])
 
             try:

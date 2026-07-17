@@ -53,13 +53,13 @@ _EN_LABELS = {
 }
 
 
-def _sec(label):
+def _sec(label) -> None:
     """Return localized section label."""
     lang = os.getenv("RISALAH_LANG", "id")[:2]
     return _EN_LABELS.get(label, label) if lang == "en" else label
 
 
-def set_page_setup(doc):
+def set_page_setup(doc) -> None:
     for section in doc.sections:
         section.top_margin = MARGIN_TOP
         section.bottom_margin = MARGIN_BOTTOM
@@ -67,7 +67,7 @@ def set_page_setup(doc):
         section.right_margin = MARGIN_RIGHT
 
 
-def set_run_font(run, size=FONT_SIZE_BODY, bold=False, italic=False, name=FONT_NAME):
+def set_run_font(run, size=FONT_SIZE_BODY, bold=False, italic=False, name=FONT_NAME) -> None:
     run.font.name = name
     run.font.size = Pt(size)
     run.bold = bold
@@ -78,7 +78,7 @@ def set_run_font(run, size=FONT_SIZE_BODY, bold=False, italic=False, name=FONT_N
     _rPr.insert(0, _rFonts)
 
 
-def set_paragraph_spacing(paragraph, line_spacing=1.5, space_after=None, space_before=None):
+def set_paragraph_spacing(paragraph, line_spacing=1.5, space_after=None, space_before=None) -> None:
     pf = paragraph.paragraph_format
     pf.line_spacing_rule = WD_LINE_SPACING.MULTIPLE
     pf.line_spacing = line_spacing
@@ -94,7 +94,7 @@ def add_formal_paragraph(
     italic=False,
     align=WD_ALIGN_PARAGRAPH.JUSTIFY,
     space_after=None,
-):
+) -> None:
     p = doc.add_paragraph()
     p.alignment = align
     set_paragraph_spacing(p, space_after=space_after)
@@ -103,7 +103,7 @@ def add_formal_paragraph(
     return p
 
 
-def set_table_borders(table):
+def set_table_borders(table) -> None:
     tbl = table._tbl
     _tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")  # noqa: N806
     borders = OxmlElement("w:tblBorders")
@@ -115,7 +115,7 @@ def set_table_borders(table):
     _tblPr.append(borders)
 
 
-def set_cell_font(cell, text, size=FONT_SIZE_TABLE, bold=False, align=WD_ALIGN_PARAGRAPH.LEFT):
+def set_cell_font(cell, text, size=FONT_SIZE_TABLE, bold=False, align=WD_ALIGN_PARAGRAPH.LEFT) -> None:
     cell.text = ""
     p = cell.paragraphs[0]
     p.alignment = align
@@ -124,7 +124,7 @@ def set_cell_font(cell, text, size=FONT_SIZE_TABLE, bold=False, align=WD_ALIGN_P
     set_run_font(run, size=size, bold=bold)
 
 
-def add_header_footer(doc, doc_number="_______________", classification="BIASA"):
+def add_header_footer(doc, doc_number="_______________", classification="BIASA") -> None:
     section = doc.sections[0]
     header = section.header
     hp = header.paragraphs[0]
@@ -140,7 +140,7 @@ def add_header_footer(doc, doc_number="_______________", classification="BIASA")
     set_run_font(run, size=8)
 
 
-def add_title_block(doc, title="RISALAH RAPAT", classification="BIASA"):
+def add_title_block(doc, title="RISALAH RAPAT", classification="BIASA") -> None:
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     set_paragraph_spacing(p, line_spacing=1.0, space_after=Pt(2))
@@ -161,7 +161,7 @@ def add_title_block(doc, title="RISALAH RAPAT", classification="BIASA"):
     set_run_font(run, size=8)
 
 
-def add_metadata(doc, metadata):
+def add_metadata(doc, metadata) -> None:
     add_formal_paragraph(
         doc,
         _sec("INFORMASI RAPAT"),
@@ -188,7 +188,7 @@ def add_metadata(doc, metadata):
         table.rows[i].cells[1].width = Cm(12)
 
 
-def add_attendees(doc, speakers):
+def add_attendees(doc, speakers) -> None:
     add_formal_paragraph(
         doc,
         _sec("DAFTAR HADIR"),
@@ -233,7 +233,7 @@ def add_attendees(doc, speakers):
             set_cell_font(row[i], v)
 
 
-def add_ringkasan_eksekutif(doc, ringkasan):
+def add_ringkasan_eksekutif(doc, ringkasan) -> None:
     if not ringkasan:
         return
     add_formal_paragraph(
@@ -257,7 +257,7 @@ def add_ringkasan_eksekutif(doc, ringkasan):
     doc.add_paragraph()
 
 
-def add_transcript(doc, corrected, max_rows=200):
+def add_transcript(doc, corrected, max_rows=200) -> None:
     add_formal_paragraph(
         doc,
         _sec("ISI RISALAH"),
@@ -305,7 +305,7 @@ def add_transcript(doc, corrected, max_rows=200):
         )
 
 
-def add_sections(doc, data):
+def add_sections(doc, data) -> None:
     items = [
         (_sec("POKOK BAHASAN"), data.get("pokok_bahasan", [])),
         (_sec("KEPUTUSAN RAPAT"), data.get("keputusan_rapat", [])),
@@ -369,7 +369,7 @@ def add_sections(doc, data):
         add_formal_paragraph(doc, "- (tidak ada)", size=FONT_SIZE_BODY, italic=True)
 
 
-def add_appendix(doc, data):
+def add_appendix(doc, data) -> None:
     dokumen_terkait = data.get("dokumen_terkait", [])
     dokumen_pendukung = data.get("dokumen_pendukung")
     dokumen_ringkasan = data.get("dokumen_ringkasan")
@@ -437,7 +437,7 @@ def add_appendix(doc, data):
                     set_cell_font(r[1], a.get("jumlah", "-"))
 
 
-def add_signature(doc):
+def add_signature(doc) -> None:
     doc.add_paragraph()
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -480,7 +480,7 @@ def generate_risalah(
     title="RISALAH RAPAT",
     doc_number="_______________",
     classification="BIASA",
-):
+) -> None:
     if classification not in CLASSIFICATION_OPTIONS:
         classification = "BIASA"
 
@@ -511,7 +511,7 @@ def generate_risalah(
     return output_path
 
 
-def generate_preview_text(enhanced, metadata=None, max_segments=50):
+def generate_preview_text(enhanced, metadata=None, max_segments=50) -> None:
     lines = []
     lines.append("=" * 60)
     lines.append("PREVIEW RISALAH RAPAT")
@@ -586,7 +586,7 @@ def generate_preview_text(enhanced, metadata=None, max_segments=50):
     return "\n".join(lines)
 
 
-def render_edited_to_docx(edited_text, metadata=None, title="RISALAH RAPAT", doc_number="_______________", classification="BIASA"):
+def render_edited_to_docx(edited_text, metadata=None, title="RISALAH RAPAT", doc_number="_______________", classification="BIASA") -> None:
     """Create formal DOCX from edited plain text. Returns BytesIO."""
     if classification not in CLASSIFICATION_OPTIONS:
         classification = "BIASA"

@@ -212,11 +212,11 @@ TRANSKRIP:
 __TRANSKRIP_TEXT__"""
 
 
-def _get_lang():
+def _get_lang() -> None:
     return os.getenv("RISALAH_LANG", "id")[:2]
 
 
-def call_llm(prompt, max_retries=3):
+def call_llm(prompt, max_retries=3) -> None:
     for cfg in LLM_CONFIGS:
         for attempt in range(max_retries):
             try:
@@ -256,7 +256,7 @@ def call_llm(prompt, max_retries=3):
     return None
 
 
-def _parse_response(resp):
+def _parse_response(resp) -> None:
     text = resp.text.strip()
     try:
         return json.loads(text)
@@ -270,7 +270,7 @@ def _parse_response(resp):
 
 
 
-def extract_json_robust(text):
+def extract_json_robust(text) -> None:
     text = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.MULTILINE)
     text = re.sub(r"\s*```$", "", text.strip(), flags=re.MULTILINE)
     text = text.strip()
@@ -298,7 +298,7 @@ def extract_json_robust(text):
         return None
 
 
-def prepare_transcript_text(merged_data, max_lines=0, max_chars=12000):
+def prepare_transcript_text(merged_data, max_lines=0, max_chars=12000) -> None:
     lines = []
     for seg in merged_data:
         mins = int(seg["start"]) // 60
@@ -315,7 +315,7 @@ def prepare_transcript_text(merged_data, max_lines=0, max_chars=12000):
     return result
 
 
-def validate_and_repair(enhanced, merged_data):
+def validate_and_repair(enhanced, merged_data) -> None:
     if "speaker_identification" not in enhanced:
         enhanced["speaker_identification"] = []
 
@@ -368,7 +368,7 @@ def validate_and_repair(enhanced, merged_data):
     return None
 
 
-def enhance_with_two_phase(merged_data, output_dir, lang=None):
+def enhance_with_two_phase(merged_data, output_dir, lang=None) -> None:
     """Two-phase: (1) identify speakers from sample, (2) build full output."""
     if lang is None:
         lang = _get_lang()
@@ -459,7 +459,7 @@ def enhance_with_two_phase(merged_data, output_dir, lang=None):
     return enhanced
 
 
-def build_corrected_transcript(merged_data, speaker_map):
+def build_corrected_transcript(merged_data, speaker_map) -> None:
     """Build corrected_transcript from merged_data using speaker_map."""
     result = []
     for seg in merged_data:
@@ -480,7 +480,7 @@ def build_corrected_transcript(merged_data, speaker_map):
     return result
 
 
-def enhance_transcript(merged_data, output_dir=None, lang=None):
+def enhance_transcript(merged_data, output_dir=None, lang=None) -> None:
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "enhanced")
     os.makedirs(output_dir, exist_ok=True)
@@ -503,7 +503,7 @@ def enhance_transcript(merged_data, output_dir=None, lang=None):
     return build_fallback(merged_data, output_dir)
 
 
-def try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context, lang=None):
+def try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context, lang=None) -> None:
     if lang is None:
         lang = _get_lang()
     sample = prepare_transcript_text(merged_data, max_lines=100, max_chars=5000)
@@ -556,7 +556,7 @@ def try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context, lan
     return enhanced
 
 
-def build_doc_aware_enhanced(merged_data, doc_preview, speaker_map, lang=None):
+def build_doc_aware_enhanced(merged_data, doc_preview, speaker_map, lang=None) -> None:
     if lang is None:
         lang = _get_lang()
     doc_ctx_short = doc_preview[:5000] if len(doc_preview) > 5000 else doc_preview
@@ -598,7 +598,7 @@ def build_doc_aware_enhanced(merged_data, doc_preview, speaker_map, lang=None):
     return validate_and_repair(enhanced, merged_data)
 
 
-def enhance_document(document_text, output_dir=None, lang=None):
+def enhance_document(document_text, output_dir=None, lang=None) -> None:
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "enhanced")
     os.makedirs(output_dir, exist_ok=True)
@@ -660,7 +660,7 @@ TRANSKRIP:
 __TRANSKRIP_TEXT__"""
 
 
-def enhance_transcript_with_doc_context(merged_data, doc_context, output_dir=None, lang=None):
+def enhance_transcript_with_doc_context(merged_data, doc_context, output_dir=None, lang=None) -> None:
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "enhanced")
     os.makedirs(output_dir, exist_ok=True)
@@ -696,7 +696,7 @@ def enhance_transcript_with_doc_context(merged_data, doc_context, output_dir=Non
     return build_fallback(merged_data, output_dir)
 
 
-def build_fallback(merged_data, output_dir=None):
+def build_fallback(merged_data, output_dir=None) -> None:
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "enhanced")
     os.makedirs(output_dir, exist_ok=True)

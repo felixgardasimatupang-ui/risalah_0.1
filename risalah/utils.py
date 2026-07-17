@@ -6,10 +6,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 
-def retry(max_attempts=3, delay=2, backoff=2, exceptions=(Exception,)):
-    def decorator(func):
+def retry(max_attempts=3, delay=2, backoff=2, exceptions=(Exception,)) -> None:
+    def decorator(func) -> None:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args, **kwargs) -> None:
             last_exc = None
             for attempt in range(max_attempts):
                 try:
@@ -29,14 +29,14 @@ def retry(max_attempts=3, delay=2, backoff=2, exceptions=(Exception,)):
     return decorator
 
 
-def run_parallel(func1, func2, timeout=7200):
+def run_parallel(func1, func2, timeout=7200) -> None:
     with ThreadPoolExecutor(max_workers=2) as ex:
         f1 = ex.submit(func1)
         f2 = ex.submit(func2)
         return f1.result(timeout=timeout), f2.result(timeout=timeout)
 
 
-def cache_check(cache_dir, key_name, data_loader, overwrite=False):
+def cache_check(cache_dir, key_name, data_loader, overwrite=False) -> None:
     os.makedirs(cache_dir, exist_ok=True)
     cache_path = os.path.join(cache_dir, f"cache_{key_name}.json")
     if os.path.exists(cache_path) and not overwrite:
@@ -53,6 +53,6 @@ def cache_check(cache_dir, key_name, data_loader, overwrite=False):
     return data
 
 
-def make_cache_key(*parts):
+def make_cache_key(*parts) -> None:
     raw = "|".join(str(p) for p in parts)
     return hashlib.md5(raw.encode()).hexdigest()[:16]
