@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import tempfile
 import time
 
 import requests
@@ -102,6 +103,31 @@ def download_result(job_id):
     return None
 
 
+@st.cache_resource
+def _load_whisper_model():
+    import whisper
+
+    return whisper.load_model("base", device="cpu")
+
+
+def _transcribe_audio(audio_bytes):
+    """Transcribe recorded audio bytes with Whisper."""
+    from risalah.id_terms import normalize_indonesian
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    tmp.write(audio_bytes)
+    tmp_path = tmp.name
+    tmp.close()
+
+    try:
+        model = _load_whisper_model()
+        result = model.transcribe(tmp_path, language="id", fp16=False)
+        text = normalize_indonesian(result["text"].strip())
+        return text, result.get("segments", [])
+    finally:
+        os.unlink(tmp_path)
+
+
 health = api_health()
 if not health:
     st.sidebar.error("Server API tidak terhubung. Jalankan: uvicorn api.app:app --reload")
@@ -113,7 +139,7 @@ else:
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Navigasi")
-page = st.sidebar.radio("Menu", ["Upload & Transkripsi", "Riwayat Job", "Panduan"])
+page = st.sidebar.radio("Menu", ["Upload & Transkripsi", "Rekam Langsung", "Riwayat Job", "Panduan"])
 
 if page == "Upload & Transkripsi":
     st.markdown(
@@ -273,21 +299,81 @@ if page == "Upload & Transkripsi":
     else:
         st.caption("Belum ada job")
 
+elif page == "Rekam Langsung":
+    st.markdown(
+        '<div class="main-header"><h2>🎤 Rekam & Transkripsi Langsung</h2></div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        "Rekam audio langsung dari browser. Transkripsi instan dengan Whisper + koreksi Bahasa Indonesia."
+    )
+
+    audio_bytes = st.audio_input("Klik mikrofon untuk mulai merekam", key="live_mic")
+
+    if audio_bytes:
+        col_a, col_b = st.columns([1, 2])
+        with col_a:
+            st.audio(audio_bytes, format="audio/wav")
+        with col_b:
+            if st.button("🎯 Transkrip Sekarang", type="primary", use_container_width=True):
+                with st.status("⏳ Memproses...") as status:
+                    st.write("Mentranskripsi dengan Whisper...")
+                    text, segments = _transcribe_audio(audio_bytes)
+                    status.update(label="✅ Selesai!", state="complete")
+
+                st.session_state["live_text"] = text
+                st.session_state["live_segments"] = segments
+
+        if st.session_state.get("live_text"):
+            st.divider()
+            edited = st.text_area(
+                "📝 Hasil Transkripsi (dapat diedit langsung)",
+                st.session_state["live_text"],
+                height=200,
+            )
+
+            cc1, cc2, cc3 = st.columns(3)
+            with cc1:
+                st.download_button(
+                    "📋 Salin sebagai TXT",
+                    edited,
+                    file_name="transkrip_langsung.txt",
+                    use_container_width=True,
+                )
+            with cc2:
+                st.button("📋 Salin ke Clipboard", use_container_width=True, disabled=True)
+            with cc3:
+                st.page_link(
+                    "ui/app.py",
+                    label="📄 Buat Risalah DOCX",
+                    disabled=True,
+                    use_container_width=True,
+                )
+
+            if st.session_state.get("live_segments"):
+                with st.expander("📊 Lihat Segmen Waktu"):
+                    for seg in st.session_state["live_segments"]:
+                        start = seg.get("start", 0)
+                        end = seg.get("end", 0)
+                        text_seg = seg.get("text", "")
+                        st.caption(f"[{start:.1f}s → {end:.1f}s]  {text_seg}")
+    else:
+        st.info("👆 Klik ikon mikrofon di atas. Izinkan akses mikrofon. Rekam, lalu stop.")
+
 elif page == "Riwayat Job":
     st.markdown('<div class="main-header"><h2>📂 Riwayat Job</h2></div>', unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([3, 1, 1])
-    with col1:
-        st.markdown("**File**")
-    with col2:
-        st.markdown("**Status**")
-    with col3:
-        st.markdown("**Aksi**")
-
+    search_q = st.text_input("🔍 Cari job (nama file atau pesan)", placeholder="Ketik untuk filter...")
     jobs = get_jobs()
+    if search_q:
+        q = search_q.lower()
+        jobs = [j for j in jobs if q in j.get("file_name", "").lower() or q in j.get("message", "").lower()]
+
     if not jobs:
-        st.info("Belum ada job")
+        st.info("Tidak ada job" if not search_q else f"Tidak ditemukan job untuk \"{search_q}\"")
     else:
+        st.caption(f"{len(jobs)} job ditemukan")
         for j in jobs:
             c1, c2, c3 = st.columns([3, 1, 1])
             with c1:
@@ -301,18 +387,33 @@ elif page == "Riwayat Job":
                 )
             with c3:
                 if j["status"] == "completed" and j.get("result_path"):
-                    docx_data = download_result(j["id"])
-                    if docx_data:
-                        st.download_button(
-                            "📥",
-                            docx_data,
-                            file_name=os.path.basename(j["result_path"]),
-                            key=f"dl_{j['id']}",
-                        )
+                    with st.popover("📥 Export", use_container_width=True):
+                        docx_data = download_result(j["id"])
+                        if docx_data:
+                            st.download_button(
+                                "📄 DOCX",
+                                docx_data,
+                                file_name=os.path.basename(j["result_path"]),
+                                key=f"dl_{j['id']}",
+                                use_container_width=True,
+                            )
+                        preview = j.get("preview_text", "")
+                        if preview:
+                            st.download_button(
+                                "📃 TXT",
+                                preview,
+                                file_name=f"{j.get('file_name', j['id'][:12])}.txt",
+                                key=f"txt_{j['id']}",
+                                use_container_width=True,
+                            )
                 elif j["status"] == "running":
                     if st.button("⏹", key=f"cancel_{j['id']}"):
                         requests.delete(f"{API_BASE}/jobs/{j['id']}", timeout=5)
                         st.rerun()
+            preview = j.get("preview_text", "")
+            if preview:
+                with st.expander("📝 Preview"):
+                    st.text(preview[:2000])
             st.divider()
 
 elif page == "Panduan":
@@ -328,6 +429,14 @@ elif page == "Panduan":
     3. **Konfigurasi** — pilih engine transkripsi & format risalah
     4. **Proses** — pipeline otomatis berjalan
     5. **Download** — dapatkan DOCX risalah format pemerintah
+
+    ### Rekam Langsung (Baru! 🎤)
+
+    - Rekam audio langsung dari browser via mikrofon
+    - Transkripsi instan dengan Whisper (model base)
+    - Koreksi otomatis Bahasa Indonesia (318 istilah pemerintah + slang)
+    - Hasil bisa diedit, disalin sebagai TXT
+    - Cocok untuk catatan rapat singkat atau ide cepat
 
     ### Engine Transkripsi
 
