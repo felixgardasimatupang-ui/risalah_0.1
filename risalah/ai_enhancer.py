@@ -27,46 +27,77 @@ except ImportError:
             "key": os.getenv("NINEROUTER_API_KEY", ""),
             "model": os.getenv("NINEROUTER_MODEL", "groq/llama-3.3-70b-versatile"),
         },
+        {
+            "name": "Gemini",
+            "base": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "key": os.getenv("GEMINI_API_KEY", ""),
+            "model": os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+        },
     ]
 
 
-SYSTEM_PROMPT = """Anda adalah asisten risalah rapat pemerintah Indonesia.
+SYSTEM_PROMPT = """Anda adalah asisten risalah rapat pemerintah Indonesia yang ahli dalam bahasa Indonesia formal dan istilah tata negara.
 
 Analisis transkrip rapat berikut dan hasilkan JSON valid (TANPA markdown, TANPA ```).
 
 FORMAT WAJIB:
 {
   "speaker_identification": [
-    {"label": "SPEAKER_00", "inferred_role": "Ketua Rapat", "inferred_name": "Bapak Bambang Susilo", "reason": "penjelasan singkat"}
+    {"label": "SPEAKER_00", "inferred_role": "Ketua Rapat", "inferred_name": "Bapak Bambang Susilo", "reason": "dipanggil 'Pak Ketua' oleh peserta lain"}
   ],
   "corrected_transcript": [
     {"time": "00:02", "speaker": "Ketua Rapat", "speaker_original": "SPEAKER_00", "text": "teks setelah koreksi istilah pemerintahan"}
   ],
   "pokok_bahasan": ["item1"],
-  "keputusan_rapat": ["keputusan1"],
+  "keputusan_rapat": ["keputusan1 — jika ada voting tulis hasilnya"],
   "kesimpulan": ["kesimpulan1"],
   "tindak_lanjut": [{"tindakan": "...", "pic": "...", "batas_waktu": "..."}],
   "agenda_rapat": ["agenda1"],
-  "dokumen_terkait": ["dokumen yang disebut"]
+  "dokumen_terkait": ["dokumen yang disebut dalam rapat"]
 }
 
-PANDUAN:
-- corrected_transcript: TULIS SEMUA SEGMEN transkrip, jangan lewatkan satu pun
-- Koreksi istilah pemerintahan: APBD, Perda, Permendagri, Musrenbang, Renja, Renstra, RPJMD, TUPOKSI, DPA, KUA-PPAS, SPJ, LPJ, SPM, Sekda, Kadis, Kabid, BAPPEDA, BPKAD, Inspektorat, APIP, SAKIP, LKPD
-- Identifikasi pembicara dari sapaan (Pak/Bu/Ibu + nama), jabatan, gaya bicara
+PANDUAN IDENTIFIKASI PEMBICARA:
+- Gunakan sapaan (Pak/Bu/Ibu + nama) sebagai petunjuk utama
+- Perhatikan jabatan yang disebut: Sekda, Kadis, Kabid, Kasubag, Camat, Lurah, dll
+- Perhatikan gaya bicara: pimpinan rapat biasanya membuka/menutup sesi, mempersilakan
+- Jika ada nama disebut oleh pembicara lain, gunakan untuk identifikasi
+- Urutan bicara: biasanya Ketua Rapat bicara duluan, lalu peserta sesuai agenda
+
+PANDUAN KOREKSI ISTILAH PEMERINTAHAN:
+- Istilah yang sering salah dengar oleh ASR:
+  * "depresi/depri" → DPRD
+  * "musrembang" → Musrenbang
+  * "tupoksi" → TUPOKSI
+  * "kua ppas/kua-pas" → KUA-PPAS
+  * "kabupatin/kabupatn/kulti" → kabupaten
+  * "pemprov/pemkab/pemda" → Pemprov/Pemkab/Pemda
+  * "sekda/kadis/kabid" → Sekda/Kadis/Kabid
+  * "dinas" + nama dinas (Dinkes, Diknas, Dishub, DPUPR, dll)
+- Istilah anggaran: APBD, APBD Perubahan, DPA, KUA-PPAS, SPJ, LPJ, SPM
+- Istilah perencanaan: Musrenbang, Renja, Renstra, RPJMD, RKPD
+- Peraturan: Perda, Perbup, Pergub, Perwal, Permendagri
+- Lembaga: BAPPEDA, BPKAD, Inspektorat, BKPSDM, BKD, BPBD
+
+PANDUAN UMUM:
+- corrected_transcript: TULIS SEMUA SEGMEN, jangan lewatkan satu pun
+- Koreksi ejaan bahasa Indonesia yang tidak baku (misal: "gak" → "tidak", "udah" → "sudah")
+- Jangan mengubah maksud asli pembicara
+- Pertahankan gaya bahasa asli — koreksi hanya istilah yang memang salah dengar
 
 TRANSKRIP:
 __TRANSKRIP_TEXT__"""
 
 DOCUMENT_SUMMARY_PROMPT = """Anda adalah asisten risalah rapat pemerintah Indonesia.
 
-Rangkum dokumen pendukung rapat berikut dalam JSON valid:
+Rangkum dokumen pendukung rapat berikut dalam JSON valid.
+Dokumen bisa berupa: Nota Dinas, Laporan Kegiatan, RAB, Draft Perda, dll.
 
 {
-  "ringkasan": "...",
-  "poin_penting": ["poin1"],
-  "angka_anggaran": [{"item": "...", "jumlah": "Rp X"}],
-  "keputusan_terkait": "..."
+  "ringkasan": "ringkasan 2-3 paragraf isi dokumen",
+  "poin_penting": ["poin penting yang relevan untuk rapat"],
+  "angka_anggaran": [{"item": "nama pos anggaran", "jumlah": "Rp X.XXX.XXX"}],
+  "keputusan_terkait": "keputusan yang perlu diambil rapat terkait dokumen ini",
+  "istilah_kunci": ["APBD", "DPA", "KUA-PPAS", "dll"]
 }
 
 DOKUMEN:
@@ -230,11 +261,16 @@ def enhance_with_two_phase(merged_data, output_dir):
     sample = prepare_transcript_text(merged_data, max_lines=200, max_chars=8000)
     speaker_prompt = (
         "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
-        "Analisis transkrip cuplikan rapat berikut dan identifikasi semua pembicara.\n"
+        "Analisis cuplikan transkrip rapat berikut dan identifikasi SETIAP pembicara unik.\n"
+        "Gunakan petunjuk kontekstual:\n"
+        "1. Sapaan: 'Pak/Bu/Ibu [Nama]' yang diucapkan pembicara lain\n"
+        "2. Jabatan: 'Saya sebagai Sekretaris/Kadis/Kabid...'\n"
+        "3. Peran: siapa yang membuka/menutup sesi → Ketua Rapat\n"
+        "4. Gaya bicara: formal/otoritatif vs staf teknis\n"
+        "5. Agenda: 'Saya dari Dinas...' atau 'Saya mewakili...'\n\n"
         "Hasilkan JSON valid:\n"
-        '{"speaker_identification": [{"label": "SPEAKER_00", "inferred_role": "...", '
-        '"inferred_name": "...", "reason": "..."}]}\n\n'
-        "Petunjuk: cari sapaan (Pak/Bu/Ibu), jabatan, gaya bicara, konteks.\n\n"
+        '{"speaker_identification": [{"label": "SPEAKER_00", "inferred_role": "Ketua Rapat", '
+        '"inferred_name": "Bapak [Nama jika bisa diinfersi]", "reason": "alasan singkat"}]}\n\n'
         "CUPLIKAN TRANSKRIP:\n" + sample
     )
     print("Phase 1: Identifikasi pembicara...")
@@ -307,12 +343,19 @@ def enhance_transcript(merged_data, output_dir=None):
         output_dir = os.path.join(PROJECT_ROOT, "output", "enhanced")
     os.makedirs(output_dir, exist_ok=True)
 
-    print("Enhancement via 9router...")
+    # Apply Indonesian normalization before AI enhancement
+    from risalah.id_terms import normalize_indonesian
+
+    for seg in merged_data:
+        if "text" in seg and seg["text"]:
+            seg["text"] = normalize_indonesian(seg["text"])
+
+    print("Enhancement via LLM (Groq → 9router → Gemini)...")
     result = enhance_with_two_phase(merged_data, output_dir)
     if result:
         return result
 
-    print("9router gagal. Build_fallback...")
+    print("Semua LLM gagal. Build_fallback...")
     return build_fallback(merged_data, output_dir)
 
 
@@ -461,12 +504,18 @@ def enhance_transcript_with_doc_context(merged_data, doc_context, output_dir=Non
     prompt = DOC_AWARE_SYSTEM_PROMPT.replace("__DOC_CONTEXT__", doc_preview)
     prompt = prompt.replace("__TRANSKRIP_TEXT__", transcript_text)
 
-    print("Doc-aware enhancement via 9router/Groq (prioritas)...")
+    from risalah.id_terms import normalize_indonesian
+
+    for seg in merged_data:
+        if "text" in seg and seg["text"]:
+            seg["text"] = normalize_indonesian(seg["text"])
+
+    print("Doc-aware enhancement via LLM (Groq → 9router → Gemini)...")
     result = try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context)
     if result:
         return result
 
-    print("9router gagal. Build_fallback...")
+    print("Semua LLM gagal. Build_fallback...")
     return build_fallback(merged_data, output_dir)
 
 

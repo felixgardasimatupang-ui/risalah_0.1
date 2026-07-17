@@ -26,6 +26,9 @@ uploads/
 output/
 hasil_transkrip_lokal/
 
+# External tool directories
+caveman/
+
 # Media files
 *.mp3
 *.MP3
