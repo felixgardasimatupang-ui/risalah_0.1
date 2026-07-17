@@ -1,7 +1,8 @@
-import os
-import sys
 import json
 import math
+import os
+import sys
+
 from pydub import AudioSegment
 from pydub.silence import detect_silence
 from tqdm import tqdm
@@ -12,10 +13,19 @@ if PROJECT_ROOT not in sys.path:
 DEFAULT_CHUNK_MINUTES = 30
 
 SUPPORTED_FORMATS = {
-    '.mp3': 'mp3', '.mp4': 'mp4', '.m4a': 'm4a', '.wav': 'wav',
-    '.ogg': 'ogg', '.flac': 'flac', '.aac': 'aac', '.wma': 'wma',
-    '.mov': 'mov', '.avi': 'avi', '.mkv': 'mkv',
+    ".mp3": "mp3",
+    ".mp4": "mp4",
+    ".m4a": "m4a",
+    ".wav": "wav",
+    ".ogg": "ogg",
+    ".flac": "flac",
+    ".aac": "aac",
+    ".wma": "wma",
+    ".mov": "mov",
+    ".avi": "avi",
+    ".mkv": "mkv",
 }
+
 
 def validate_file(file_path):
     if not os.path.exists(file_path):
@@ -28,6 +38,7 @@ def validate_file(file_path):
         raise ValueError(f"Format {ext} tidak didukung. Gunakan: {list(SUPPORTED_FORMATS.keys())}")
     return True
 
+
 def convert_to_wav_mono(audio, target_sr=16000):
     if audio.channels > 1:
         audio = audio.set_channels(1)
@@ -35,11 +46,12 @@ def convert_to_wav_mono(audio, target_sr=16000):
         audio = audio.set_frame_rate(target_sr)
     return audio
 
+
 def normalize_volume_intelligent(audio, target_dbfs=-20.0):
     noise_segments = detect_silence(audio, min_silence_len=500, silence_thresh=-50, seek_step=100)
     if noise_segments:
-        noise_sample = audio[noise_segments[0][0]:noise_segments[0][1]]
-        noise_floor = noise_sample.dBFS if noise_sample.dBFS != float('-inf') else -60
+        noise_sample = audio[noise_segments[0][0] : noise_segments[0][1]]
+        noise_floor = noise_sample.dBFS if noise_sample.dBFS != float("-inf") else -60
         if audio.dBFS - noise_floor < 15:
             print(f"Ruang dengung sempit ({audio.dBFS - noise_floor:.1f} dB). Normalisasi ringan.")
             gain = min(target_dbfs - audio.dBFS, 10)
@@ -49,6 +61,7 @@ def normalize_volume_intelligent(audio, target_dbfs=-20.0):
         print(f"Audio sangat pelan. Gain terbatas ke 25dB (dari {gain:.0f}dB).")
         gain = 25
     return audio.apply_gain(gain)
+
 
 def process_audio(file_path, output_dir=None, chunk_minutes=DEFAULT_CHUNK_MINUTES):
     if output_dir is None:
@@ -62,15 +75,15 @@ def process_audio(file_path, output_dir=None, chunk_minutes=DEFAULT_CHUNK_MINUTE
     try:
         audio = AudioSegment.from_file(file_path)
     except Exception as e:
-        raise RuntimeError(f"Gagal membaca audio (mungkin corrupt): {e}")
+        raise RuntimeError(f"Gagal membaca audio (mungkin corrupt): {e}") from e
 
     if len(audio) == 0:
         raise RuntimeError("File audio kosong (0 durasi)")
 
-    print(f"Konversi 16kHz mono...")
+    print("Konversi 16kHz mono...")
     audio = convert_to_wav_mono(audio)
 
-    print(f"Normalisasi volume cerdas...")
+    print("Normalisasi volume cerdas...")
     audio = normalize_volume_intelligent(audio)
 
     total_duration_ms = len(audio)
@@ -83,7 +96,7 @@ def process_audio(file_path, output_dir=None, chunk_minutes=DEFAULT_CHUNK_MINUTE
         start_ms = i * chunk_duration_ms
         end_ms = min(start_ms + chunk_duration_ms, total_duration_ms)
         chunk = audio[start_ms:end_ms]
-        chunk_name = f"chunk_{i+1:03d}"
+        chunk_name = f"chunk_{i + 1:03d}"
 
         mp3_path = os.path.join(output_dir, f"{chunk_name}.mp3")
         chunk.export(mp3_path, format="mp3", bitrate="128k")
@@ -91,17 +104,19 @@ def process_audio(file_path, output_dir=None, chunk_minutes=DEFAULT_CHUNK_MINUTE
         wav_path = os.path.join(output_dir, f"{chunk_name}.wav")
         chunk.export(wav_path, format="wav")
 
-        chunks.append({
-            "index": i + 1,
-            "name": chunk_name,
-            "mp3": mp3_path,
-            "wav": wav_path,
-            "start_ms": start_ms,
-            "end_ms": end_ms,
-            "start_min": round(start_ms / 60000, 1),
-            "end_min": round(end_ms / 60000, 1),
-            "duration_ms": end_ms - start_ms,
-        })
+        chunks.append(
+            {
+                "index": i + 1,
+                "name": chunk_name,
+                "mp3": mp3_path,
+                "wav": wav_path,
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "start_min": round(start_ms / 60000, 1),
+                "end_min": round(end_ms / 60000, 1),
+                "duration_ms": end_ms - start_ms,
+            }
+        )
 
     metadata = {
         "original_file": os.path.abspath(file_path),
@@ -122,6 +137,7 @@ def process_audio(file_path, output_dir=None, chunk_minutes=DEFAULT_CHUNK_MINUTE
     print(f"OK: {num_chunks} chunk -> {output_dir}")
     return metadata
 
+
 def process_folder(folder_path, output_base=None, chunk_minutes=DEFAULT_CHUNK_MINUTES):
     from risalah.file_scanner import scan_folder
 
@@ -139,9 +155,11 @@ def process_folder(folder_path, output_base=None, chunk_minutes=DEFAULT_CHUNK_MI
     for f in audio_files:
         print(f"\n--- {f['name']} ---")
         try:
-            meta = process_audio(f["path"],
-                                 output_dir=os.path.join(output_base, f["name"]),
-                                 chunk_minutes=chunk_minutes)
+            meta = process_audio(
+                f["path"],
+                output_dir=os.path.join(output_base, f["name"]),
+                chunk_minutes=chunk_minutes,
+            )
             results.append(meta)
         except Exception as e:
             print(f"  GAGAL: {e}")
@@ -158,11 +176,11 @@ def process_folder(folder_path, output_base=None, chunk_minutes=DEFAULT_CHUNK_MI
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(f"SELESAI: {len(results)}/{len(audio_files)} audio diproses")
     for r in results:
         print(f"  {r['original_file']} -> {r['num_chunks']} chunk")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
     return results
 
 

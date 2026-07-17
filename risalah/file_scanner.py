@@ -1,22 +1,41 @@
+import json
 import os
 import sys
-import json
 from datetime import datetime
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-AUDIO_EXTS = {'.mp3','.mp4','.m4a','.wav','.ogg','.flac','.aac','.wma','.mov','.avi','.mkv'}
-IMAGE_EXTS = {'.png','.jpg','.jpeg','.tiff','.tif','.bmp','.webp'}
-DOC_EXTS = {'.docx','.doc','.pdf','.txt','.rtf','.md','.csv','.xlsx','.xls','.pptx'}
+AUDIO_EXTS = {
+    ".mp3",
+    ".mp4",
+    ".m4a",
+    ".wav",
+    ".ogg",
+    ".flac",
+    ".aac",
+    ".wma",
+    ".mov",
+    ".avi",
+    ".mkv",
+}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp"}
+DOC_EXTS = {".docx", ".doc", ".pdf", ".txt", ".rtf", ".md", ".csv", ".xlsx", ".xls", ".pptx"}
 ALL_EXTS = AUDIO_EXTS | IMAGE_EXTS | DOC_EXTS
 
+
 def classify(ext):
-    if ext in AUDIO_EXTS: return "audio"
-    if ext in IMAGE_EXTS: return "image"
-    if ext in {'.pdf','.docx','.doc','.rtf'}: return "document"
-    if ext in {'.txt','.md'}: return "text"
-    if ext in {'.csv','.xlsx','.xls'}: return "spreadsheet"
+    if ext in AUDIO_EXTS:
+        return "audio"
+    if ext in IMAGE_EXTS:
+        return "image"
+    if ext in {".pdf", ".docx", ".doc", ".rtf"}:
+        return "document"
+    if ext in {".txt", ".md"}:
+        return "text"
+    if ext in {".csv", ".xlsx", ".xls"}:
+        return "spreadsheet"
     return "other"
+
 
 def scan_folder(folder_path):
     if not os.path.exists(folder_path):
@@ -29,26 +48,33 @@ def scan_folder(folder_path):
             ext = os.path.splitext(f)[1].lower()
             if ext in ALL_EXTS:
                 fp = os.path.join(root, f)
-                all_files.append({
-                    "path": fp, "name": f, "ext": ext,
-                    "type": classify(ext), "size_bytes": os.path.getsize(fp),
-                })
+                all_files.append(
+                    {
+                        "path": fp,
+                        "name": f,
+                        "ext": ext,
+                        "type": classify(ext),
+                        "size_bytes": os.path.getsize(fp),
+                    }
+                )
 
     result = {
         "folder": os.path.abspath(folder_path),
         "scan_time": datetime.now().isoformat(),
         "total_files": len(all_files),
-        "audio_files": [f for f in all_files if f["type"]=="audio"],
-        "image_files": [f for f in all_files if f["type"]=="image"],
-        "document_files": [f for f in all_files if f["type"]=="document"],
-        "text_files": [f for f in all_files if f["type"]=="text"],
-        "spreadsheet_files": [f for f in all_files if f["type"]=="spreadsheet"],
+        "audio_files": [f for f in all_files if f["type"] == "audio"],
+        "image_files": [f for f in all_files if f["type"] == "image"],
+        "document_files": [f for f in all_files if f["type"] == "document"],
+        "text_files": [f for f in all_files if f["type"] == "text"],
+        "spreadsheet_files": [f for f in all_files if f["type"] == "spreadsheet"],
         "all_files": all_files,
     }
 
-    print(f"Scan: {len(result['audio_files'])} audio, {len(result['image_files'])} gambar, "
-          f"{len(result['document_files'])} dokumen, {len(result['text_files'])} teks, "
-          f"{len(result['spreadsheet_files'])} spreadsheet = {result['total_files']} total")
+    print(
+        f"Scan: {len(result['audio_files'])} audio, {len(result['image_files'])} gambar, "
+        f"{len(result['document_files'])} dokumen, {len(result['text_files'])} teks, "
+        f"{len(result['spreadsheet_files'])} spreadsheet = {result['total_files']} total"
+    )
 
     scan_path = os.path.join(PROJECT_ROOT, "output", "scan_results.json")
     os.makedirs(os.path.dirname(scan_path), exist_ok=True)
@@ -56,12 +82,15 @@ def scan_folder(folder_path):
         json.dump(result, f, indent=2, ensure_ascii=False)
     return result
 
+
 def read_txt(fp):
-    with open(fp, "r", encoding="utf-8", errors="replace") as f:
+    with open(fp, encoding="utf-8", errors="replace") as f:
         return f.read()
+
 
 def read_docx(fp):
     from docx import Document
+
     doc = Document(fp)
     parts = []
     for p in doc.paragraphs:
@@ -74,8 +103,10 @@ def read_docx(fp):
                 parts.append(line)
     return "\n".join(parts)
 
+
 def read_pdf(fp):
     import fitz
+
     doc = fitz.open(fp)
     lines = []
     for page in doc:
@@ -87,6 +118,7 @@ def read_pdf(fp):
     doc.close()
     if not "".join(lines).strip():
         import pdfplumber
+
         with pdfplumber.open(fp) as pdf:
             for page in pdf.pages:
                 t = page.extract_text()
@@ -94,33 +126,86 @@ def read_pdf(fp):
                     lines.append(t)
     return "\n".join(lines)
 
+
 def read_image(fp):
-    from PIL import Image
-    import google.generativeai as genai
     from dotenv import load_dotenv
+
     load_dotenv()
-    key = os.getenv("GEMINI_API_KEY")
-    if not key:
+
+    with open(fp, "rb") as f:
+        import base64
+        img_b64 = base64.b64encode(f.read()).decode()
+
+    base_url = os.getenv("NINEROUTER_BASE_URL", "http://localhost:20128/v1")
+    api_key = os.getenv("NINEROUTER_API_KEY", "")
+    model = os.getenv("NINEROUTER_MODEL", "groq/llama-3.3-70b-versatile")
+
+    import requests
+    try:
+        resp = requests.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    "Ekstrak semua teks dari gambar ini dengan presisi tinggi. "
+                                    "Jika ada tabel, format markdown. Bahasa Indonesia."
+                                ),
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                            },
+                        ],
+                    }
+                ],
+                "temperature": 0.1,
+                "max_tokens": 2048,
+                "stream": False,
+            },
+            timeout=60,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"  OCR via 9router gagal: {e}")
+
+    print("  OCR via 9router gagal. Fallback ke pytesseract...")
+    try:
+        import pytesseract
+        from PIL import Image
+
+        img = Image.open(fp)
+        text = pytesseract.image_to_string(img, lang="ind")
+        return text.strip() if text.strip() else "[Kosong]"
+    except ImportError:
+        print("  pytesseract tidak terinstall. Install: pip install pytesseract")
         return "[OCR SKIP]"
-    genai.configure(api_key=key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
-    img = Image.open(fp)
-    prompt = ("Ekstrak semua teks dari gambar ini dengan presisi tinggi. "
-              "Jika ada tabel, format markdown. Bahasa Indonesia.")
-    response = model.generate_content([prompt, img])
-    return response.text if response and response.text else "[Kosong]"
+
 
 def read_spreadsheet(fp):
     import csv
+
     ext = os.path.splitext(fp)[1].lower()
     lines = []
-    if ext == '.csv':
-        with open(fp, "r", encoding="utf-8", errors="replace") as f:
+    if ext == ".csv":
+        with open(fp, encoding="utf-8", errors="replace") as f:
             for row in csv.reader(f):
                 lines.append(" | ".join(row))
-    elif ext in ('.xlsx','.xls'):
+    elif ext in (".xlsx", ".xls"):
         try:
             import openpyxl
+
             wb = openpyxl.load_workbook(fp, read_only=True, data_only=True)
             for name in wb.sheetnames:
                 ws = wb[name]
@@ -136,14 +221,20 @@ def read_spreadsheet(fp):
             lines.append(f"[Error xlsx: {e}]")
     return "\n".join(lines)
 
+
 def extract_all_text(scan_result, output_dir=None):
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "extracted_text")
     os.makedirs(output_dir, exist_ok=True)
 
-    ctx = {"folder": scan_result["folder"], "extracted_at": datetime.now().isoformat(),
-           "audio_sources": [], "image_sources": [], "document_sources": [],
-           "all_text_combined": ""}
+    ctx = {
+        "folder": scan_result["folder"],
+        "extracted_at": datetime.now().isoformat(),
+        "audio_sources": [],
+        "image_sources": [],
+        "document_sources": [],
+        "all_text_combined": "",
+    }
 
     for f in scan_result.get("audio_files", []):
         ctx["audio_sources"].append({"file": f["name"], "path": f["path"]})
@@ -160,9 +251,9 @@ def extract_all_text(scan_result, output_dir=None):
             ext = f["ext"]
             if ext == ".pdf":
                 text = read_pdf(f["path"])
-            elif ext in (".docx",".doc"):
+            elif ext in (".docx", ".doc"):
                 text = read_docx(f["path"])
-            elif ext in (".txt",".md",".rtf"):
+            elif ext in (".txt", ".md", ".rtf"):
                 text = read_txt(f["path"])
             else:
                 text = ""
@@ -197,6 +288,7 @@ def extract_all_text(scan_result, output_dir=None):
         f.write(ctx["all_text_combined"])
     print(f"Teks: {json_path}")
     return ctx
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

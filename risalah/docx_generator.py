@@ -1,13 +1,14 @@
+import json
 import os
 import sys
-import json
 from datetime import datetime
+
 from docx import Document
-from docx.shared import Pt, Cm, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import qn
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Cm, Pt, RGBColor
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -24,6 +25,7 @@ MARGIN_BOTTOM = Cm(3)
 
 CLASSIFICATION_OPTIONS = ["BIASA", "TERBATAS", "RAHASIA"]
 
+
 def set_page_setup(doc):
     for section in doc.sections:
         section.top_margin = MARGIN_TOP
@@ -31,25 +33,35 @@ def set_page_setup(doc):
         section.left_margin = MARGIN_LEFT
         section.right_margin = MARGIN_RIGHT
 
+
 def set_run_font(run, size=FONT_SIZE_BODY, bold=False, italic=False, name=FONT_NAME):
     run.font.name = name
     run.font.size = Pt(size)
     run.bold = bold
     run.italic = italic
-    rPr = run._r.get_or_add_rPr()
-    rFonts = OxmlElement('w:rFonts')
-    rFonts.set(qn('w:eastAsia'), name)
-    rPr.insert(0, rFonts)
+    _rPr = run._r.get_or_add_rPr()  # noqa: N806
+    _rFonts = OxmlElement("w:rFonts")  # noqa: N806
+    _rFonts.set(qn("w:eastAsia"), name)
+    _rPr.insert(0, _rFonts)
 
-def set_paragraph_spacing(paragraph, line_spacing=1.5, space_after=Pt(6), space_before=Pt(0)):
+
+def set_paragraph_spacing(paragraph, line_spacing=1.5, space_after=None, space_before=None):
     pf = paragraph.paragraph_format
     pf.line_spacing_rule = WD_LINE_SPACING.MULTIPLE
     pf.line_spacing = line_spacing
     pf.space_after = space_after
     pf.space_before = space_before
 
-def add_formal_paragraph(doc, text, size=FONT_SIZE_BODY, bold=False, italic=False,
-                         align=WD_ALIGN_PARAGRAPH.JUSTIFY, space_after=Pt(6)):
+
+def add_formal_paragraph(
+    doc,
+    text,
+    size=FONT_SIZE_BODY,
+    bold=False,
+    italic=False,
+    align=WD_ALIGN_PARAGRAPH.JUSTIFY,
+    space_after=None,
+):
     p = doc.add_paragraph()
     p.alignment = align
     set_paragraph_spacing(p, space_after=space_after)
@@ -57,16 +69,18 @@ def add_formal_paragraph(doc, text, size=FONT_SIZE_BODY, bold=False, italic=Fals
     set_run_font(run, size=size, bold=bold, italic=italic)
     return p
 
+
 def set_table_borders(table):
     tbl = table._tbl
-    tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement('w:tblPr')
-    borders = OxmlElement('w:tblBorders')
-    for b in ['top','left','bottom','right','insideH','insideV']:
-        el = OxmlElement(f'w:{b}')
-        for attr, val in [('val','single'),('sz','4'),('space','0'),('color','000000')]:
-            el.set(qn(f'w:{attr}'), val)
+    _tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")  # noqa: N806
+    borders = OxmlElement("w:tblBorders")
+    for b in ["top", "left", "bottom", "right", "insideH", "insideV"]:
+        el = OxmlElement(f"w:{b}")
+        for attr, val in [("val", "single"), ("sz", "4"), ("space", "0"), ("color", "000000")]:
+            el.set(qn(f"w:{attr}"), val)
         borders.append(el)
-    tblPr.append(borders)
+    _tblPr.append(borders)
+
 
 def set_cell_font(cell, text, size=FONT_SIZE_TABLE, bold=False, align=WD_ALIGN_PARAGRAPH.LEFT):
     cell.text = ""
@@ -75,6 +89,7 @@ def set_cell_font(cell, text, size=FONT_SIZE_TABLE, bold=False, align=WD_ALIGN_P
     set_paragraph_spacing(p, line_spacing=1.0, space_after=Pt(2))
     run = p.add_run(text)
     set_run_font(run, size=size, bold=bold)
+
 
 def add_header_footer(doc, doc_number="_______________", classification="BIASA"):
     section = doc.sections[0]
@@ -90,6 +105,7 @@ def add_header_footer(doc, doc_number="_______________", classification="BIASA")
     fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = fp.add_run("Halaman 1")
     set_run_font(run, size=8)
+
 
 def add_title_block(doc, title="RISALAH RAPAT", classification="BIASA"):
     p = doc.add_paragraph()
@@ -111,9 +127,16 @@ def add_title_block(doc, title="RISALAH RAPAT", classification="BIASA"):
     run = p.add_run("—" * 30)
     set_run_font(run, size=8)
 
+
 def add_metadata(doc, metadata):
-    add_formal_paragraph(doc, "INFORMASI RAPAT", size=FONT_SIZE_HEADING, bold=True,
-                         align=WD_ALIGN_PARAGRAPH.LEFT, space_after=Pt(6))
+    add_formal_paragraph(
+        doc,
+        "INFORMASI RAPAT",
+        size=FONT_SIZE_HEADING,
+        bold=True,
+        align=WD_ALIGN_PARAGRAPH.LEFT,
+        space_after=Pt(6),
+    )
 
     fields = [
         ("Hari / Tanggal", metadata.get("tanggal", "_______________")),
@@ -131,9 +154,16 @@ def add_metadata(doc, metadata):
         table.rows[i].cells[0].width = Cm(4)
         table.rows[i].cells[1].width = Cm(12)
 
+
 def add_attendees(doc, speakers):
-    add_formal_paragraph(doc, "DAFTAR HADIR", size=FONT_SIZE_HEADING, bold=True,
-                         align=WD_ALIGN_PARAGRAPH.LEFT, space_after=Pt(6))
+    add_formal_paragraph(
+        doc,
+        "DAFTAR HADIR",
+        size=FONT_SIZE_HEADING,
+        bold=True,
+        align=WD_ALIGN_PARAGRAPH.LEFT,
+        space_after=Pt(6),
+    )
 
     table = doc.add_table(rows=1, cols=5)
     set_table_borders(table)
@@ -141,8 +171,13 @@ def add_attendees(doc, speakers):
 
     headers = ["No", "Nama", "Jabatan", "Instansi", "Keterangan"]
     for i, h in enumerate(headers):
-        set_cell_font(table.rows[0].cells[i], h, size=FONT_SIZE_BODY, bold=True,
-                      align=WD_ALIGN_PARAGRAPH.CENTER)
+        set_cell_font(
+            table.rows[0].cells[i],
+            h,
+            size=FONT_SIZE_BODY,
+            bold=True,
+            align=WD_ALIGN_PARAGRAPH.CENTER,
+        )
 
     seen = []
     for spk in speakers:
@@ -159,12 +194,21 @@ def add_attendees(doc, speakers):
 
     if not seen:
         row = table.add_row().cells
-        for i, v in enumerate(["1", "_______________", "_______________", "_______________", "Hadir"]):
+        for i, v in enumerate(
+            ["1", "_______________", "_______________", "_______________", "Hadir"]
+        ):
             set_cell_font(row[i], v)
 
+
 def add_transcript(doc, corrected, max_rows=200):
-    add_formal_paragraph(doc, "ISI RISALAH", size=FONT_SIZE_HEADING, bold=True,
-                         align=WD_ALIGN_PARAGRAPH.LEFT, space_after=Pt(6))
+    add_formal_paragraph(
+        doc,
+        "ISI RISALAH",
+        size=FONT_SIZE_HEADING,
+        bold=True,
+        align=WD_ALIGN_PARAGRAPH.LEFT,
+        space_after=Pt(6),
+    )
 
     table = doc.add_table(rows=1, cols=4)
     set_table_borders(table)
@@ -172,8 +216,13 @@ def add_transcript(doc, corrected, max_rows=200):
 
     headers = ["No", "Waktu", "Pembicara", "Isi Pembicaraan"]
     for i, h in enumerate(headers):
-        set_cell_font(table.rows[0].cells[i], h, size=FONT_SIZE_BODY, bold=True,
-                      align=WD_ALIGN_PARAGRAPH.CENTER)
+        set_cell_font(
+            table.rows[0].cells[i],
+            h,
+            size=FONT_SIZE_BODY,
+            bold=True,
+            align=WD_ALIGN_PARAGRAPH.CENTER,
+        )
 
     col_widths = [Cm(1), Cm(1.8), Cm(3.5), Cm(10.5)]
     for i, w in enumerate(col_widths):
@@ -184,14 +233,20 @@ def add_transcript(doc, corrected, max_rows=200):
         for i, w in enumerate(col_widths):
             row[i].width = w
         set_cell_font(row[0], str(idx + 1), size=FONT_SIZE_TABLE, align=WD_ALIGN_PARAGRAPH.CENTER)
-        set_cell_font(row[1], seg.get("time", ""), size=FONT_SIZE_TABLE, align=WD_ALIGN_PARAGRAPH.CENTER)
+        set_cell_font(
+            row[1], seg.get("time", ""), size=FONT_SIZE_TABLE, align=WD_ALIGN_PARAGRAPH.CENTER
+        )
         set_cell_font(row[2], seg.get("speaker", ""), size=FONT_SIZE_TABLE)
         set_cell_font(row[3], seg.get("text", ""), size=FONT_SIZE_TABLE)
 
     if len(corrected) > max_rows:
-        add_formal_paragraph(doc,
+        add_formal_paragraph(
+            doc,
             f"Catatan: Transkrip lengkap ({len(corrected)} segmen) tersedia di file JSON output.",
-            size=10, italic=True)
+            size=10,
+            italic=True,
+        )
+
 
 def add_sections(doc, data):
     items = [
@@ -203,34 +258,59 @@ def add_sections(doc, data):
     for title, list_items in items:
         if not list_items:
             continue
-        add_formal_paragraph(doc, title, size=FONT_SIZE_HEADING, bold=True,
-                             align=WD_ALIGN_PARAGRAPH.LEFT, space_after=Pt(6))
+        add_formal_paragraph(
+            doc,
+            title,
+            size=FONT_SIZE_HEADING,
+            bold=True,
+            align=WD_ALIGN_PARAGRAPH.LEFT,
+            space_after=Pt(6),
+        )
         for item in list_items:
-            p = doc.add_paragraph(style='List Number' if title == "KEPUTUSAN RAPAT" else 'List Bullet')
+            p = doc.add_paragraph(
+                style="List Number" if title == "KEPUTUSAN RAPAT" else "List Bullet"
+            )
             p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             set_paragraph_spacing(p, line_spacing=1.5, space_after=Pt(3))
             run = p.add_run(item)
             set_run_font(run, size=FONT_SIZE_BODY)
 
     tl = data.get("tindak_lanjut", [])
-    add_formal_paragraph(doc, "TINDAK LANJUT", size=FONT_SIZE_HEADING, bold=True,
-                         align=WD_ALIGN_PARAGRAPH.LEFT, space_after=Pt(6))
+    add_formal_paragraph(
+        doc,
+        "TINDAK LANJUT",
+        size=FONT_SIZE_HEADING,
+        bold=True,
+        align=WD_ALIGN_PARAGRAPH.LEFT,
+        space_after=Pt(6),
+    )
 
     if tl:
         table = doc.add_table(rows=1, cols=4)
         set_table_borders(table)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         for i, h in enumerate(["No", "Tindakan", "PIC", "Batas Waktu"]):
-            set_cell_font(table.rows[0].cells[i], h, size=FONT_SIZE_BODY, bold=True,
-                          align=WD_ALIGN_PARAGRAPH.CENTER)
+            set_cell_font(
+                table.rows[0].cells[i],
+                h,
+                size=FONT_SIZE_BODY,
+                bold=True,
+                align=WD_ALIGN_PARAGRAPH.CENTER,
+            )
         for idx, item in enumerate(tl):
             row = table.add_row().cells
             set_cell_font(row[0], str(idx + 1), align=WD_ALIGN_PARAGRAPH.CENTER)
-            set_cell_font(row[1], item.get("tindakan", "-"))
-            set_cell_font(row[2], item.get("pic", "-"))
-            set_cell_font(row[3], item.get("batas_waktu", "-"))
+            if isinstance(item, dict):
+                set_cell_font(row[1], item.get("tindakan", "-"))
+                set_cell_font(row[2], item.get("pic", "-"))
+                set_cell_font(row[3], item.get("batas_waktu", "-"))
+            else:
+                set_cell_font(row[1], str(item))
+                set_cell_font(row[2], "-")
+                set_cell_font(row[3], "-")
     else:
         add_formal_paragraph(doc, "- (tidak ada)", size=FONT_SIZE_BODY, italic=True)
+
 
 def add_appendix(doc, data):
     dokumen_terkait = data.get("dokumen_terkait", [])
@@ -241,22 +321,38 @@ def add_appendix(doc, data):
         return
 
     doc.add_page_break()
-    add_formal_paragraph(doc, "LAMPIRAN", size=FONT_SIZE_TITLE, bold=True,
-                         align=WD_ALIGN_PARAGRAPH.CENTER, space_after=Pt(12))
+    add_formal_paragraph(
+        doc,
+        "LAMPIRAN",
+        size=FONT_SIZE_TITLE,
+        bold=True,
+        align=WD_ALIGN_PARAGRAPH.CENTER,
+        space_after=Pt(12),
+    )
 
     if dokumen_terkait:
-        add_formal_paragraph(doc, "Dokumen yang Dibahas dalam Rapat", size=FONT_SIZE_HEADING,
-                             bold=True, align=WD_ALIGN_PARAGRAPH.LEFT)
+        add_formal_paragraph(
+            doc,
+            "Dokumen yang Dibahas dalam Rapat",
+            size=FONT_SIZE_HEADING,
+            bold=True,
+            align=WD_ALIGN_PARAGRAPH.LEFT,
+        )
         for item in dokumen_terkait:
-            p = doc.add_paragraph(style='List Bullet')
+            p = doc.add_paragraph(style="List Bullet")
             p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             set_paragraph_spacing(p)
             run = p.add_run(item)
             set_run_font(run, size=FONT_SIZE_BODY)
 
     if dokumen_pendukung:
-        add_formal_paragraph(doc, "Hasil Ekstraksi Dokumen Pendukung", size=FONT_SIZE_HEADING,
-                             bold=True, align=WD_ALIGN_PARAGRAPH.LEFT)
+        add_formal_paragraph(
+            doc,
+            "Hasil Ekstraksi Dokumen Pendukung",
+            size=FONT_SIZE_HEADING,
+            bold=True,
+            align=WD_ALIGN_PARAGRAPH.LEFT,
+        )
 
         if dokumen_ringkasan:
             r = dokumen_ringkasan.get("ringkasan", "")
@@ -265,7 +361,7 @@ def add_appendix(doc, data):
                 add_formal_paragraph(doc, r, space_after=Pt(6))
 
             for poin in dokumen_ringkasan.get("poin_penting", []):
-                p = doc.add_paragraph(style='List Bullet')
+                p = doc.add_paragraph(style="List Bullet")
                 p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
                 set_paragraph_spacing(p)
                 run = p.add_run(poin)
@@ -283,14 +379,27 @@ def add_appendix(doc, data):
                     set_cell_font(r[0], a.get("item", "-"))
                     set_cell_font(r[1], a.get("jumlah", "-"))
 
+
 def add_signature(doc):
     doc.add_paragraph()
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     set_paragraph_spacing(p)
     now = datetime.now()
-    bulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
-             "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+    bulan = [
+        "Januari",
+        "Februari",
+        "Maret",
+        "April",
+        "Mei",
+        "Juni",
+        "Juli",
+        "Agustus",
+        "September",
+        "Oktober",
+        "November",
+        "Desember",
+    ]
     run = p.add_run(f"Jakarta, {now.day} {bulan[now.month - 1]} {now.year}")
     set_run_font(run, size=FONT_SIZE_BODY, italic=True)
 
@@ -306,9 +415,15 @@ def add_signature(doc):
         run = p.add_run(f"{label}\n\n\n\n(_______________)\n\nNama Jelas")
         set_run_font(run, size=FONT_SIZE_BODY)
 
-def generate_risalah(enhanced, metadata=None, output_path=None,
-                     title="RISALAH RAPAT", doc_number="_______________",
-                     classification="BIASA"):
+
+def generate_risalah(
+    enhanced,
+    metadata=None,
+    output_path=None,
+    title="RISALAH RAPAT",
+    doc_number="_______________",
+    classification="BIASA",
+):
     if classification not in CLASSIFICATION_OPTIONS:
         classification = "BIASA"
 
@@ -337,6 +452,7 @@ def generate_risalah(enhanced, metadata=None, output_path=None,
     print(f"DOCX: {output_path}")
     return output_path
 
+
 def generate_preview_text(enhanced, metadata=None, max_segments=50):
     lines = []
     lines.append("=" * 60)
@@ -355,31 +471,43 @@ def generate_preview_text(enhanced, metadata=None, max_segments=50):
     if si:
         lines.append("DAFTAR HADIR:")
         for s in si:
-            lines.append(f"  - {s.get('inferred_name', s.get('label',''))} ({s.get('inferred_role','')})")
+            lines.append(
+                f"  - {s.get('inferred_name', s.get('label', ''))} ({s.get('inferred_role', '')})"
+            )
         lines.append("")
 
-    lines.append("ISI RISALAH (preview {} dari {} segmen):".format(
-        min(max_segments, len(enhanced.get("corrected_transcript", []))),
-        len(enhanced.get("corrected_transcript", []))
-    ))
+    lines.append(
+        "ISI RISALAH (preview {} dari {} segmen):".format(
+            min(max_segments, len(enhanced.get("corrected_transcript", []))),
+            len(enhanced.get("corrected_transcript", [])),
+        )
+    )
     lines.append("-" * 60)
     for idx, seg in enumerate(enhanced.get("corrected_transcript", [])[:max_segments]):
-        lines.append(f"[{seg.get('time','00:00')}] {seg.get('speaker','')}: {seg.get('text','')}")
+        lines.append(
+            f"[{seg.get('time', '00:00')}] {seg.get('speaker', '')}: {seg.get('text', '')}"
+        )
         if idx < max_segments - 1:
             lines.append("")
     if len(enhanced.get("corrected_transcript", [])) > max_segments:
-        lines.append(f"\n... dan {len(enhanced['corrected_transcript']) - max_segments} segmen lainnya.")
+        lines.append(
+            f"\n... dan {len(enhanced['corrected_transcript']) - max_segments} segmen lainnya."
+        )
 
-    for section, key in [("POKOK BAHASAN", "pokok_bahasan"),
-                          ("KEPUTUSAN", "keputusan_rapat"),
-                          ("KESIMPULAN", "kesimpulan"),
-                          ("TINDAK LANJUT", "tindak_lanjut")]:
+    for section, key in [
+        ("POKOK BAHASAN", "pokok_bahasan"),
+        ("KEPUTUSAN", "keputusan_rapat"),
+        ("KESIMPULAN", "kesimpulan"),
+        ("TINDAK LANJUT", "tindak_lanjut"),
+    ]:
         items = enhanced.get(key, [])
         if items:
             lines.append(f"\n{section}:")
             for item in items:
                 if isinstance(item, dict):
-                    lines.append(f"  - {item.get('tindakan','')} | PIC: {item.get('pic','')} | {item.get('batas_waktu','')}")
+                    lines.append(
+                        f"  - {item.get('tindakan', '')} | PIC: {item.get('pic', '')} | {item.get('batas_waktu', '')}"
+                    )
                 else:
                     lines.append(f"  - {item}")
 
@@ -390,6 +518,7 @@ def generate_preview_text(enhanced, metadata=None, max_segments=50):
 
     return "\n".join(lines)
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python risalah/docx_generator.py <enhanced_json> [metadata_json] [title]")
@@ -399,8 +528,12 @@ if __name__ == "__main__":
     preview = "--preview" in sys.argv
     args = [a for a in sys.argv[1:] if a != "--preview"]
 
-    data = json.load(open(args[0]))
-    meta = json.load(open(args[1])) if len(args) > 1 else None
+    with open(args[0]) as f:
+        data = json.load(f)
+    meta = None
+    if len(args) > 1:
+        with open(args[1]) as f:
+            meta = json.load(f)
     title = args[2] if len(args) > 2 else "RISALAH RAPAT"
 
     if preview:

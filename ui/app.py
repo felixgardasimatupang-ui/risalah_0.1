@@ -1,16 +1,15 @@
+import json
 import os
 import sys
-import json
 import time
-import uuid
+
 import requests
 import streamlit as st
-from datetime import datetime
-from pathlib import Path
+from dotenv import load_dotenv
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
-from dotenv import load_dotenv
+
 load_dotenv()
 
 API_BASE = os.getenv("API_URL", "http://localhost:8000/api")
@@ -22,7 +21,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown("""
+st.markdown(
+    """
 <style>
     .stApp { background: #f5f5f5; }
     .main-header { text-align: center; padding: 1rem; background: white; border-radius: 10px; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -34,7 +34,9 @@ st.markdown("""
     .status-pending { background: #e2e3e5; color: #383d41; }
     div[data-testid="stSidebarNav"] { display: none; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 def api_health():
@@ -55,15 +57,19 @@ def upload_file(file_bytes, filename):
 
 
 def start_job(file_path, file_name, engine, chunk_minutes, title, classification, doc_number):
-    r = requests.post(f"{API_BASE}/transcribe", data={
-        "file_path": file_path,
-        "file_name": file_name,
-        "engine": engine,
-        "chunk_minutes": chunk_minutes,
-        "title": title,
-        "classification": classification,
-        "doc_number": doc_number,
-    }, timeout=10)
+    r = requests.post(
+        f"{API_BASE}/transcribe",
+        data={
+            "file_path": file_path,
+            "file_name": file_name,
+            "engine": engine,
+            "chunk_minutes": chunk_minutes,
+            "title": title,
+            "classification": classification,
+            "doc_number": doc_number,
+        },
+        timeout=10,
+    )
     if r.ok:
         return r.json()
     return None
@@ -110,8 +116,10 @@ st.sidebar.markdown("### Navigasi")
 page = st.sidebar.radio("Menu", ["Upload & Transkripsi", "Riwayat Job", "Panduan"])
 
 if page == "Upload & Transkripsi":
-    st.markdown('<div class="main-header"><h1>📋 Risalah Rapat</h1><p>Upload audio/folder → DOCX risalah format pemerintah</p></div>',
-                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="main-header"><h1>📋 Risalah Rapat</h1><p>Upload audio/folder → DOCX risalah format pemerintah</p></div>',
+        unsafe_allow_html=True,
+    )
 
     col1, col2 = st.columns([3, 2])
 
@@ -123,13 +131,19 @@ if page == "Upload & Transkripsi":
         )
 
         st.markdown("### Atau masukkan path folder")
-        folder_path = st.text_input("Path folder (untuk mode folder)", placeholder="/path/to/folder")
+        folder_path = st.text_input(
+            "Path folder (untuk mode folder)", placeholder="/path/to/folder"
+        )
 
         st.markdown("### Konfigurasi")
         cc1, cc2 = st.columns(2)
         with cc1:
-            engine = st.selectbox("Engine Transkripsi", ["whisper", "gemini", "assemblyai"],
-                                  index=0, help="whisper=lokal, gemini=cepat, assemblyai=akurat")
+            engine = st.selectbox(
+                "Engine Transkripsi",
+                ["whisper", "assemblyai"],
+                index=0,
+                help="whisper=lokal, assemblyai=cloud",
+            )
             chunk_minutes = st.slider("Durasi per chunk (menit)", 10, 60, 30)
             classification = st.selectbox("Klasifikasi", ["BIASA", "TERBATAS", "RAHASIA"], index=0)
         with cc2:
@@ -145,8 +159,13 @@ if page == "Upload & Transkripsi":
                         result = upload_file(uploaded_file.getvalue(), uploaded_file.name)
                         if result:
                             job = start_job(
-                                result["file_path"], result["file_name"],
-                                engine, chunk_minutes, title, classification, doc_number,
+                                result["file_path"],
+                                result["file_name"],
+                                engine,
+                                chunk_minutes,
+                                title,
+                                classification,
+                                doc_number,
                             )
                             if job:
                                 st.success(f"Job {job['id']} dimulai!")
@@ -158,8 +177,13 @@ if page == "Upload & Transkripsi":
                     elif folder_path:
                         if os.path.exists(folder_path):
                             job = start_job(
-                                folder_path, os.path.basename(folder_path),
-                                engine, chunk_minutes, title, classification, doc_number,
+                                folder_path,
+                                os.path.basename(folder_path),
+                                engine,
+                                chunk_minutes,
+                                title,
+                                classification,
+                                doc_number,
                             )
                             if job:
                                 st.success(f"Job folder {job['id']} dimulai!")
@@ -203,9 +227,12 @@ if page == "Upload & Transkripsi":
                                     docx_data = download_result(active_job)
                                     if docx_data:
                                         docx_name = os.path.basename(result_path)
-                                        st.download_button("📥 Download DOCX", docx_data,
-                                                           file_name=docx_name,
-                                                           use_container_width=True)
+                                        st.download_button(
+                                            "📥 Download DOCX",
+                                            docx_data,
+                                            file_name=docx_name,
+                                            use_container_width=True,
+                                        )
                                 preview = data.get("preview_text", "")
                                 if preview:
                                     with st.expander("Lihat Preview"):
@@ -219,7 +246,7 @@ if page == "Upload & Transkripsi":
                                 break
 
                     time.sleep(0.1)
-            except Exception as e:
+            except Exception:
                 with placeholder.container():
                     st.info("Menghubungkan ke stream progress...")
                     status = get_job(active_job)
@@ -237,10 +264,10 @@ if page == "Upload & Transkripsi":
             cls = f"status-{j.get('status', 'pending')}"
             st.markdown(
                 f'<div class="job-card">'
-                f'<strong>{j.get("file_name", j["id"][:12])}</strong> '
+                f"<strong>{j.get('file_name', j['id'][:12])}</strong> "
                 f'<span class="status-badge {cls}">{j["status"].upper()}</span> '
-                f'<br><small>{j.get("message", "")} | {j.get("progress", 0)}%</small>'
-                f'</div>',
+                f"<br><small>{j.get('message', '')} | {j.get('progress', 0)}%</small>"
+                f"</div>",
                 unsafe_allow_html=True,
             )
     else:
@@ -268,15 +295,20 @@ elif page == "Riwayat Job":
                 st.caption(f"{j.get('created_at', '')[:19]} | {j.get('message', '')}")
             with c2:
                 cls = f"status-{j.get('status', 'pending')}"
-                st.markdown(f'<span class="status-badge {cls}">{j["status"].upper()}</span>',
-                            unsafe_allow_html=True)
+                st.markdown(
+                    f'<span class="status-badge {cls}">{j["status"].upper()}</span>',
+                    unsafe_allow_html=True,
+                )
             with c3:
                 if j["status"] == "completed" and j.get("result_path"):
                     docx_data = download_result(j["id"])
                     if docx_data:
-                        st.download_button("📥", docx_data,
-                                           file_name=os.path.basename(j["result_path"]),
-                                           key=f"dl_{j['id']}")
+                        st.download_button(
+                            "📥",
+                            docx_data,
+                            file_name=os.path.basename(j["result_path"]),
+                            key=f"dl_{j['id']}",
+                        )
                 elif j["status"] == "running":
                     if st.button("⏹", key=f"cancel_{j['id']}"):
                         requests.delete(f"{API_BASE}/jobs/{j['id']}", timeout=5)
@@ -284,7 +316,9 @@ elif page == "Riwayat Job":
             st.divider()
 
 elif page == "Panduan":
-    st.markdown('<div class="main-header"><h2>📖 Panduan Penggunaan</h2></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="main-header"><h2>📖 Panduan Penggunaan</h2></div>', unsafe_allow_html=True
+    )
 
     st.markdown("""
     ### Cara Menggunakan

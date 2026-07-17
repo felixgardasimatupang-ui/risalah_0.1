@@ -1,14 +1,14 @@
+import json
 import os
 import uuid
-import json
 from datetime import datetime
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse, StreamingResponse
-from typing import Optional
 
-from api.schemas import JobCreate, JobResponse, JobListResponse, HealthResponse, JobStatusEnum
-from api.tasks import process_audio_task, process_folder_task, get_job_status, update_job_status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
+
 from api.config import config
+from api.schemas import HealthResponse, JobListResponse, JobResponse
+from api.tasks import get_job_status, process_audio_task, process_folder_task, update_job_status
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api", tags=["api"])
 def _check_redis():
     try:
         import redis
+
         r = redis.from_url(config.REDIS_URL)
         r.ping()
         return True
@@ -40,26 +41,38 @@ def _job_to_response(raw: dict) -> JobResponse:
 @router.get("/health", response_model=HealthResponse)
 def health_check():
     redis_ok = _check_redis()
-    gemini_ok = bool(config.GEMINI_API_KEY and "your_" not in config.GEMINI_API_KEY)
     return HealthResponse(
         status="ok" if redis_ok else "degraded",
         redis=redis_ok,
         celery=redis_ok,
-        gemini=gemini_ok,
     )
 
 
+ALLOWED_EXTS = {".mp3", ".wav", ".mp4", ".m4a", ".ogg", ".flac", ".webm", ".pdf", ".docx", ".xlsx", ".png", ".jpg", ".jpeg"}
+MAX_SIZE_BYTES = 500 * 1024 * 1024
+
+
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...)):  # noqa: B008
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(400, f"Tipe file '{ext}' tidak diizinkan. Gunakan: {', '.join(sorted(ALLOWED_EXTS))}")
+
     os.makedirs(config.UPLOAD_DIR, exist_ok=True)
     file_id = str(uuid.uuid4())[:8]
-    ext = os.path.splitext(file.filename or "file")[1] or ".wav"
     safe_name = f"{file_id}_{file.filename}"
     dest = os.path.join(config.UPLOAD_DIR, safe_name)
     content = await file.read()
+    if len(content) > MAX_SIZE_BYTES:
+        raise HTTPException(400, f"File terlalu besar ({len(content) / 1024 / 1024:.1f} MB). Maksimal {MAX_SIZE_BYTES / 1024 / 1024:.0f} MB.")
     with open(dest, "wb") as f:
         f.write(content)
-    return {"file_id": file_id, "file_path": dest, "file_name": file.filename, "size_bytes": len(content)}
+    return {
+        "file_id": file_id,
+        "file_path": dest,
+        "file_name": file.filename,
+        "size_bytes": len(content),
+    }
 
 
 @router.post("/transcribe", response_model=JobResponse)
@@ -75,7 +88,7 @@ async def create_transcribe_job(
     if not os.path.exists(file_path):
         raise HTTPException(400, f"File tidak ditemukan: {file_path}")
 
-    if engine not in ("whisper", "assemblyai", "gemini"):
+    if engine not in ("whisper", "assemblyai"):
         raise HTTPException(400, f"Engine tidak dikenal: {engine}")
 
     job_id = str(uuid.uuid4())[:12]
@@ -85,16 +98,19 @@ async def create_transcribe_job(
         raw["file_name"] = file_name
         raw["created_at"] = datetime.now().isoformat()
         import redis
+
         r = redis.from_url(config.REDIS_URL)
         r.set(f"job:{job_id}", json.dumps(raw))
 
     is_folder = os.path.isdir(file_path)
     if is_folder:
-        process_folder_task.delay(job_id, file_path, engine, chunk_minutes,
-                                   title, classification, doc_number)
+        process_folder_task.delay(
+            job_id, file_path, engine, chunk_minutes, title, classification, doc_number
+        )
     else:
-        process_audio_task.delay(job_id, file_path, engine, chunk_minutes,
-                                  title, classification, doc_number)
+        process_audio_task.delay(
+            job_id, file_path, engine, chunk_minutes, title, classification, doc_number
+        )
 
     return _job_to_response(get_job_status(job_id) or {})
 
@@ -103,11 +119,12 @@ async def create_transcribe_job(
 def list_jobs(limit: int = 50, offset: int = 0):
     try:
         import redis
+
         r = redis.from_url(config.REDIS_URL)
         keys = r.keys("job:*")
         keys = sorted(keys, reverse=True)
         jobs = []
-        for k in keys[offset:offset + limit]:
+        for k in keys[offset : offset + limit]:
             raw = r.get(k)
             if raw:
                 jobs.append(_job_to_response(json.loads(raw)))
@@ -132,6 +149,7 @@ def cancel_job(job_id: str):
     update_job_status(job_id, "cancelled", 0, "Dibatalkan oleh user")
     try:
         from celery.task.control import revoke
+
         revoke(job_id, terminate=True)
     except Exception:
         pass
@@ -153,6 +171,7 @@ def download_result(job_id: str):
 async def stream_job_progress(job_id: str):
     async def event_generator():
         import redis as redis_lib
+
         r = redis_lib.from_url(config.REDIS_URL)
         pubsub = r.pubsub()
         pubsub.subscribe(f"job:{job_id}:updates")

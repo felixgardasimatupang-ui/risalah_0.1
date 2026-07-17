@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "plugin": ["/Users/felix/Documents/Project Sementara/ponytail/.opencode/plugins/ponytail.mjs"],
   "default_agent": "build",
   "instructions": ["AGENTS.md"],
   "provider": {
@@ -7,9 +8,21 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "9router (local)",
       "options": {
-        "baseURL": "http://localhost:20128/v1"
+        "baseURL": "http://localhost:8787/v1"
       },
       "models": {
+        "ag-premium": {},
+        "ag-coding": {},
+        "ag-fast": {},
+        "ag/gemini-3-flash": {},
+        "ag/gemini-3.5-flash-low": {},
+        "ag/gemini-3.5-flash-extra-low": {},
+        "ag/gemini-3.1-pro-low": {},
+        "ag/gemini-pro-agent": {},
+        "ag/gemini-3-flash-agent": {},
+        "ag/claude-sonnet-4-6": {},
+        "ag/claude-opus-4-6-thinking": {},
+        "ag/gpt-oss-120b-medium": {},
         "groq/llama-3.3-70b-versatile": {},
         "groq/meta-llama/llama-4-maverick-17b-128e-instruct": {},
         "groq/qwen/qwen3-32b": {},
@@ -31,45 +44,99 @@
     "plan": {
       "description": "Deep reasoning & architecture planning. Use for complex design decisions, sprint planning, architecture reviews.",
       "mode": "primary",
-      "permission": { "edit": "deny" }
+      "permission": { "edit": "deny" },
+      "model": "9router/ag-premium"
     },
     "build": {
       "description": "General coding and implementation. Default agent for writing code, fixing bugs, refactoring.",
-      "mode": "primary"
-    },
-    "explore": {
-      "description": "Codebase exploration and research. Use for understanding code, finding patterns, impact analysis.",
-      "mode": "subagent"
+      "mode": "primary",
+      "model": "9router/ag-coding"
     },
     "backend": {
       "description": "Backend API (FastAPI, Celery, Redis). Use for routes, tasks, config, WebSocket, schemas, Celery workers.",
       "mode": "subagent",
-      "model": "9router/groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "model": "9router/ag-coding",
       "color": "#1f77b4"
     },
     "pipeline": {
       "description": "Risalah pipeline (audio, transkripsi, diarization, AI enhancement, DOCX). Use for audio_processor, transcriber, diarizer, ai_enhancer, docx_generator, file_scanner, utils, pipeline modules.",
       "mode": "subagent",
-      "model": "9router/groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "model": "9router/ag-coding",
       "color": "#2ca02c"
     },
     "ui-dev": {
       "description": "Streamlit UI development. Use for ui/app.py, layout, components, user experience.",
       "mode": "subagent",
-      "model": "9router/groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "model": "9router/ag-coding",
       "color": "#9467bd"
     },
     "devops": {
       "description": "Docker, Docker Compose, deployment scripts, CI/CD. Use for Dockerfile, docker-compose.yml, scripts/, .env configuration.",
       "mode": "subagent",
-      "model": "9router/groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "model": "9router/ag-coding",
       "color": "#d62728"
     },
     "9router": {
       "description": "Fast agent using local 9router LLM (Llama 4 Maverick via Groq). Use for quick tasks, brainstorming, lightweight queries.",
       "mode": "subagent",
-      "model": "9router/groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "model": "9router/ag-fast",
       "color": "#ff6b6b"
+    },
+    "explore": {
+      "description": "Codebase exploration and research. Use for understanding code, finding patterns, impact analysis.",
+      "mode": "subagent",
+      "model": "9router/ag-coding",
+      "color": "#7f7f7f"
+    },
+    "architect": {
+      "description": "System design, ADR, trade-off analysis.",
+      "mode": "subagent",
+      "model": "9router/ag-premium",
+      "permission": { "edit": "deny" },
+      "color": "#e377c2"
+    },
+    "reviewer": {
+      "description": "Code review, quality analysis.",
+      "mode": "subagent",
+      "model": "9router/ag-premium",
+      "permission": { "edit": "deny" },
+      "color": "#8c564b"
+    },
+    "security": {
+      "description": "OWASP, auth audit, vulnerability scanning.",
+      "mode": "subagent",
+      "model": "9router/ag-premium",
+      "color": "#bcbd22"
+    },
+    "tester": {
+      "description": "Test generation, coverage analysis.",
+      "mode": "subagent",
+      "model": "9router/ag-coding",
+      "color": "#17becf"
+    },
+    "general": {
+      "description": "Multi-step research & execution (fallback combo, hemat token).",
+      "mode": "subagent",
+      "model": "9router/ag-coding",
+      "color": "#1f77b4"
+    },
+    "database": {
+      "description": "SQL, migrasi, indexing queries.",
+      "mode": "subagent",
+      "model": "9router/ag-coding",
+      "color": "#ffbb78"
+    },
+    "frontend": {
+      "description": "React/Streamlit UI, Tailwind layout.",
+      "mode": "subagent",
+      "model": "9router/ag-coding",
+      "color": "#98df8a"
+    },
+    "opencode": {
+      "description": "Opencode config, plugin, skill, MCP configuration.",
+      "mode": "subagent",
+      "model": "9router/ag-coding",
+      "color": "#c5b0d5"
     }
   },
   "command": {
@@ -104,6 +171,26 @@
     "9router-dashboard": {
       "description": "Open 9router monitoring dashboard",
       "template": "Buka 9router dashboard di http://localhost:20128/dashboard"
+    },
+    "headroom-start": {
+      "description": "Start Headroom proxy routing through 9router",
+      "template": "headroom proxy --port 8787 --openai-api-url http://localhost:20128/v1"
+    },
+    "headroom-stop": {
+      "description": "Stop Headroom proxy",
+      "template": "pkill -f 'headroom proxy'"
+    },
+    "lint": {
+      "description": "Lint code with ruff",
+      "template": "source .venv/bin/activate && ruff check api/ risalah/ ui/"
+    },
+    "format": {
+      "description": "Format code with ruff",
+      "template": "source .venv/bin/activate && ruff format api/ risalah/ ui/"
+    },
+    "clean": {
+      "description": "Clean __pycache__, .ruff_cache, .pytest_cache",
+      "template": "find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; find . -type d -name '.ruff_cache' -o -name '.pytest_cache' -exec rm -rf {} + 2>/dev/null; find . -type f -name '*.pyc' -delete 2>/dev/null"
     }
   },
   "compaction": {

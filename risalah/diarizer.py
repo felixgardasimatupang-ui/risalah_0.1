@@ -1,17 +1,19 @@
+import json
 import os
 import sys
-import json
+
 import torch
-from tqdm import tqdm
 from pydub import AudioSegment
 from pydub.silence import detect_silence
+from tqdm import tqdm
+
+from risalah.utils import cache_check, make_cache_key, retry
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GLOBAL_SPEAKER_MAP = {}
 
-from risalah.utils import retry, cache_check, make_cache_key
-
 CACHE_DIR_DIAR = os.path.join(PROJECT_ROOT, "output", "diarization")
+
 
 def run_diarization(chunks, output_dir=None):
     if output_dir is None:
@@ -21,19 +23,23 @@ def run_diarization(chunks, output_dir=None):
     ck = make_cache_key("diarization", *[c["name"] for c in chunks])
     return cache_check(output_dir, ck, lambda: _run_diarization_impl(chunks, output_dir))
 
+
 def _run_diarization_impl(chunks, output_dir):
     hf_token = os.getenv("HF_TOKEN")
-    if hf_token:
-        return run_pyannote_diarization(chunks, hf_token, output_dir)
+    if hf_token and hf_token not in ("", "your_huggingface_token_here"):
+        return run_pyannote_diarization(chunks, output_dir)
+    print("HF_TOKEN tidak valid. Fallback VAD (tanpa label speaker).")
     try:
-        import speechbrain
+        import speechbrain  # noqa: F401
+
         return run_speechbrain_diarization(chunks, output_dir)
     except ImportError:
         print("speechbrain tidak terinstal. Fallback VAD (tanpa label speaker).")
         print("Gemini akan membedakan pembicara dari konteks percakapan.")
         return run_vad_segmentation(chunks, output_dir)
 
-def run_pyannote_diarization(chunks, hf_token, output_dir=None):
+
+def run_pyannote_diarization(chunks, output_dir=None):
     from pyannote.audio import Pipeline
     from pyannote.audio.pipelines.utils.hook import ProgressHook
 
@@ -41,13 +47,23 @@ def run_pyannote_diarization(chunks, hf_token, output_dir=None):
         output_dir = CACHE_DIR_DIAR
     os.makedirs(output_dir, exist_ok=True)
 
+    hf_token = os.getenv("HF_TOKEN", "")
+    from huggingface_hub import login as hf_login
+
+    hf_login(token=hf_token)
+
     print("Memuat Pyannote speaker-diarization-community-1...")
     pipeline = None
-    for model_name in ["pyannote/speaker-diarization-community-1", "pyannote/speaker-diarization-3.1"]:
+    for model_name in [
+        "pyannote/speaker-diarization-community-1",
+        "pyannote/speaker-diarization-3.1",
+    ]:
         try:
+
             @retry(max_attempts=2, delay=10, backoff=2)
             def load_pipeline(m):
-                return Pipeline.from_pretrained(m, use_auth_token=hf_token)
+                return Pipeline.from_pretrained(m)
+
             pipeline = load_pipeline(model_name)
             break
         except Exception as e:
@@ -68,6 +84,7 @@ def run_pyannote_diarization(chunks, hf_token, output_dir=None):
     all_results = []
     for chunk in tqdm(chunks, desc="Pyannote"):
         try:
+
             @retry(max_attempts=2, delay=5, backoff=2)
             def process_chunk(c):
                 with ProgressHook() as hook:
@@ -76,15 +93,17 @@ def run_pyannote_diarization(chunks, hf_token, output_dir=None):
             output = process_chunk(chunk)
 
             speakers = []
-            for segment, track, speaker in output.itertracks(yield_label=True):
+            for segment, _track, speaker in output.itertracks(yield_label=True):
                 if speaker not in GLOBAL_SPEAKER_MAP:
                     GLOBAL_SPEAKER_MAP[speaker] = f"SPEAKER_{next_global_id:02d}"
                     next_global_id += 1
-                speakers.append({
-                    "start": round(segment.start, 2),
-                    "end": round(segment.end, 2),
-                    "speaker": GLOBAL_SPEAKER_MAP[speaker],
-                })
+                speakers.append(
+                    {
+                        "start": round(segment.start, 2),
+                        "end": round(segment.end, 2),
+                        "speaker": GLOBAL_SPEAKER_MAP[speaker],
+                    }
+                )
 
             seg_data = {"chunk": chunk["name"], "speakers": speakers}
             json_path = os.path.join(output_dir, f"{chunk['name']}.json")
@@ -101,10 +120,11 @@ def run_pyannote_diarization(chunks, hf_token, output_dir=None):
     print(f"Pyannote selesai. {len(GLOBAL_SPEAKER_MAP)} speaker unik global.")
     return all_results
 
+
 def run_speechbrain_diarization(chunks, output_dir=None):
-    from speechbrain.inference.speaker import SpeakerRecognition
-    from sklearn.cluster import AgglomerativeClustering
     import numpy as np
+    from sklearn.cluster import AgglomerativeClustering
+    from speechbrain.inference.speaker import SpeakerRecognition
 
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "diarization")
@@ -130,7 +150,6 @@ def run_speechbrain_diarization(chunks, output_dir=None):
         try:
             audio = AudioSegment.from_wav(chunk["wav"])
             audio_dur_ms = len(audio)
-            sample_rate = audio.frame_rate
 
             silence_ranges = detect_silence(
                 audio, min_silence_len=600, silence_thresh=-40, seek_step=100
@@ -168,7 +187,7 @@ def run_speechbrain_diarization(chunks, output_dir=None):
                     pad = torch.zeros(1, target_frames - samples.shape[1])
                     samples = torch.cat([samples, pad], dim=1)
                 elif samples.shape[1] > target_frames * 10:
-                    samples = samples[:, :target_frames * 10]
+                    samples = samples[:, : target_frames * 10]
                 with torch.no_grad():
                     emb = embedding_model.encode_batch(samples).squeeze().detach().numpy()
                 embeddings.append(emb)
@@ -177,8 +196,14 @@ def run_speechbrain_diarization(chunks, output_dir=None):
                 valid_segments.append((start_ms, end_ms))
 
             if len(valid_segments) < 2:
-                speakers = [{"start": round(s / 1000, 2), "end": round(e / 1000, 2), "speaker": "SPEAKER_00"}
-                            for s, e in valid_segments]
+                speakers = [
+                    {
+                        "start": round(s / 1000, 2),
+                        "end": round(e / 1000, 2),
+                        "speaker": "SPEAKER_00",
+                    }
+                    for s, e in valid_segments
+                ]
             else:
                 embeddings = np.vstack(embeddings)
                 n_clusters = min(len(valid_segments) // 3 + 1, 10)
@@ -189,7 +214,7 @@ def run_speechbrain_diarization(chunks, output_dir=None):
                 local_map = {}
                 local_next = 0
                 speakers = []
-                for (start_ms, end_ms), label in zip(valid_segments, labels):
+                for (start_ms, end_ms), label in zip(valid_segments, labels, strict=False):
                     key = str(label)
                     if key not in local_map:
                         local_map[key] = f"SPEAKER_{local_next:02d}"
@@ -198,11 +223,13 @@ def run_speechbrain_diarization(chunks, output_dir=None):
                     if global_key not in GLOBAL_SPEAKER_MAP:
                         GLOBAL_SPEAKER_MAP[global_key] = f"SPEAKER_{next_global_id:02d}"
                         next_global_id += 1
-                    speakers.append({
-                        "start": round(start_ms / 1000, 2),
-                        "end": round(end_ms / 1000, 2),
-                        "speaker": GLOBAL_SPEAKER_MAP[global_key],
-                    })
+                    speakers.append(
+                        {
+                            "start": round(start_ms / 1000, 2),
+                            "end": round(end_ms / 1000, 2),
+                            "speaker": GLOBAL_SPEAKER_MAP[global_key],
+                        }
+                    )
 
             seg_data = {"chunk": chunk["name"], "speakers": speakers}
             json_path = os.path.join(output_dir, f"{chunk['name']}.json")
@@ -221,6 +248,7 @@ def run_speechbrain_diarization(chunks, output_dir=None):
         json.dump(all_results, f, indent=2, ensure_ascii=False)
     print(f"SpeechBrain selesai. {len(GLOBAL_SPEAKER_MAP)} speaker unik global.")
     return all_results
+
 
 def run_vad_segmentation(chunks, output_dir=None):
     if output_dir is None:
@@ -244,22 +272,30 @@ def run_vad_segmentation(chunks, output_dir=None):
                 prev_end = 0
                 for start_ms, end_ms in silence_ranges:
                     if start_ms > prev_end + 200:
-                        segments.append({
-                            "start": round(prev_end / 1000, 2),
-                            "end": round(start_ms / 1000, 2),
-                            "speaker": "SPEAKER_00",
-                        })
+                        segments.append(
+                            {
+                                "start": round(prev_end / 1000, 2),
+                                "end": round(start_ms / 1000, 2),
+                                "speaker": "SPEAKER_00",
+                            }
+                        )
                     prev_end = end_ms
 
                 audio_dur_ms = len(audio)
                 if prev_end < audio_dur_ms - 200:
-                    segments.append({
-                        "start": round(prev_end / 1000, 2),
-                        "end": round(audio_dur_ms / 1000, 2),
-                        "speaker": "SPEAKER_00",
-                    })
+                    segments.append(
+                        {
+                            "start": round(prev_end / 1000, 2),
+                            "end": round(audio_dur_ms / 1000, 2),
+                            "speaker": "SPEAKER_00",
+                        }
+                    )
 
-                speakers = segments if segments else [{"start": 0, "end": round(audio_dur_sec, 2), "speaker": "SPEAKER_00"}]
+                speakers = (
+                    segments
+                    if segments
+                    else [{"start": 0, "end": round(audio_dur_sec, 2), "speaker": "SPEAKER_00"}]
+                )
 
         except Exception as e:
             print(f"VAD error {chunk['name']}: {e}")
@@ -276,6 +312,7 @@ def run_vad_segmentation(chunks, output_dir=None):
         json.dump(all_results, f, indent=2, ensure_ascii=False)
     print(f"VAD selesai. {len(all_results)} chunk (semua speaker=SPEAKER_00, Gemini akan bedakan).")
     return all_results
+
 
 def merge_transcript_with_diarization(transcript_data, diarization_data):
     merged = []
@@ -298,15 +335,18 @@ def merge_transcript_with_diarization(transcript_data, diarization_data):
             else:
                 speaker = "SPEAKER_UNKNOWN"
 
-            merged.append({
-                "chunk": chunk_name,
-                "start": seg["start"],
-                "end": seg["end"],
-                "speaker": speaker,
-                "text": seg["text"],
-            })
+            merged.append(
+                {
+                    "chunk": chunk_name,
+                    "start": seg["start"],
+                    "end": seg["end"],
+                    "speaker": speaker,
+                    "text": seg["text"],
+                }
+            )
 
     return merged
+
 
 def run_diarization_pipeline(audio_chunks, transcript_segments, output_dir=None):
     if output_dir is None:
@@ -319,13 +359,15 @@ def run_diarization_pipeline(audio_chunks, transcript_segments, output_dir=None)
         merged = []
         for chunk_data in transcript_segments:
             for seg in chunk_data.get("segments", []):
-                merged.append({
-                    "chunk": chunk_data["chunk"],
-                    "start": seg["start"],
-                    "end": seg["end"],
-                    "speaker": seg.get("speaker", "SPEAKER_UNKNOWN"),
-                    "text": seg["text"],
-                })
+                merged.append(
+                    {
+                        "chunk": chunk_data["chunk"],
+                        "start": seg["start"],
+                        "end": seg["end"],
+                        "speaker": seg.get("speaker", "SPEAKER_UNKNOWN"),
+                        "text": seg["text"],
+                    }
+                )
         return merged
 
     merged = merge_transcript_with_diarization(transcript_segments, diarization_results)
@@ -343,8 +385,10 @@ def run_diarization_pipeline(audio_chunks, transcript_segments, output_dir=None)
         print(f"  {spk}: {count} segmen")
     return merged
 
+
 if __name__ == "__main__":
     from dotenv import load_dotenv
+
     load_dotenv()
 
     if len(sys.argv) < 2:

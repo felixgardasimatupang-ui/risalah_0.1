@@ -1,15 +1,17 @@
-from pydantic import BaseModel
-from typing import List, Optional, Any
+from __future__ import annotations
+
 from enum import Enum
+from typing import Any, Optional
+
+from pydantic import BaseModel
 
 
-class EngineEnum(str, Enum):
+class EngineEnum(str, Enum):  # noqa: UP042
     whisper = "whisper"
     assemblyai = "assemblyai"
-    gemini = "gemini"
 
 
-class JobStatusEnum(str, Enum):
+class JobStatusEnum(str, Enum):  # noqa: UP042
     pending = "pending"
     running = "running"
     completed = "completed"
@@ -39,14 +41,13 @@ class JobResponse(BaseModel):
 
 class JobListResponse(BaseModel):
     total: int
-    jobs: List[JobResponse]
+    jobs: list[JobResponse]
 
 
 class HealthResponse(BaseModel):
     status: str
     redis: bool
     celery: bool
-    gemini: bool
     version: str = "2.0.0"
 
 
