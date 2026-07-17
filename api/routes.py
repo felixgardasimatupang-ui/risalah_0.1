@@ -169,6 +169,41 @@ def download_result(job_id: str):
     return FileResponse(result_path, filename=os.path.basename(result_path))
 
 
+@router.get("/download/{job_id}/pdf")
+def download_pdf(job_id: str):
+    raw = get_job_status(job_id)
+    if not raw:
+        raise HTTPException(404, "Job tidak ditemukan")
+    result_path = raw.get("result_path")
+    if not result_path:
+        raise HTTPException(404, "File hasil belum tersedia")
+
+    # Read enhanced JSON to generate PDF
+    result_dir = os.path.dirname(result_path)
+    # Find the enhanced JSON in the same job directory
+    enhanced_path = None
+    for fname in os.listdir(result_dir):
+        if fname.endswith("_enhanced.json"):
+            enhanced_path = os.path.join(result_dir, fname)
+            break
+
+    if not enhanced_path or not os.path.exists(enhanced_path):
+        raise HTTPException(404, "Data enhancement tidak ditemukan")
+
+    with open(enhanced_path) as f:
+        enhanced = json.load(f)
+
+    from risalah.pdf_generator import generate_pdf
+
+    buf = generate_pdf(enhanced, metadata=raw)
+    base_name = os.path.splitext(os.path.basename(result_path))[0]
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={base_name}.pdf"},
+    )
+
+
 @router.get("/stream/{job_id}")
 async def stream_job_progress(job_id: str):
     async def event_generator():

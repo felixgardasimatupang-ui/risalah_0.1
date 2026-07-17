@@ -118,6 +118,17 @@ def download_result(job_id):
     return None
 
 
+def download_pdf_result(job_id):
+    """Return PDF bytes for a completed job."""
+    try:
+        r = requests.get(f"{API_BASE}/download/{job_id}/pdf", timeout=15)
+        if r.ok:
+            return r.content
+    except Exception:
+        pass
+    return None
+
+
 @st.cache_resource
 def _load_whisper_model():
     import whisper
@@ -426,6 +437,17 @@ elif page == "Riwayat Job":
                                 key=f"dl_{j['id']}",
                                 use_container_width=True,
                             )
+                            pdf_data = download_pdf_result(j["id"])
+                            if pdf_data:
+                                base = os.path.splitext(os.path.basename(j["result_path"]))[0]
+                                st.download_button(
+                                    "📕 PDF",
+                                    pdf_data,
+                                    file_name=f"{base}.pdf",
+                                    mime="application/pdf",
+                                    key=f"pdf_{j['id']}",
+                                    use_container_width=True,
+                                )
                         preview = j.get("preview_text", "")
                         if preview:
                             st.download_button(

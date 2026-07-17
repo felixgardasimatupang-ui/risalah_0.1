@@ -31,3 +31,4 @@ requests>=2.32
 scikit-learn>=1.6.1
 speechbrain>=1.1.0
 pytesseract>=0.3
+fpdf2>=2.8

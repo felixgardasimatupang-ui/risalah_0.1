@@ -20,6 +20,7 @@ Pipeline 6-stage + UI Streamlit untuk menghasilkan **Risalah Rapat** (official m
 | **Action items** — tabel tindak lanjut dgn PJ + deadline | ✅ |
 | **Edit notulen** — edit teks → download ulang DOCX formal | ✅ |
 | **Share email** — kirim DOCX via SMTP dari UI | ✅ |
+| **Export PDF** — download PDF dari UI (/download/{id}/pdf) | ✅ |
 | **Search by konten** — cari di preview_text | ✅ |
 | **Dokumen pendukung** — scan folder + ekstraksi teks (OCR) | ✅ |
 | **Codespaces ready** — devcontainer, skill bundle, 1-click setup | ✅ |
