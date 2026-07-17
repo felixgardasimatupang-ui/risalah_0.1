@@ -55,6 +55,8 @@ JABATAN = {
     "sekertaris daerah": "Sekretaris Daerah",
     "sekretaris daerah": "Sekretaris Daerah",
     "sekretaris": "Sekretaris",
+    "sepertaris": "Sekretaris",
+    "sepetaris": "Sekretaris",
     # Kadis
     "kadis": "Kadis",
     "kepala dinas": "Kepala Dinas",
@@ -258,6 +260,9 @@ ASR_ERRORS = {
     "bapak bapak": "Bapak-Bapak",
     "ibu ibu": "Ibu-Ibu",
     "saudara saudara": "Saudara-Saudara",
+    "selam": "selamat",
+    "sejah": "sejahtera",
+    "terabagi": "terbagi",
 }
 
 # ── Indonesian slang → formal (safe for government) ────────

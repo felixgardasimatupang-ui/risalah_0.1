@@ -21,6 +21,10 @@ class TestIdTerms:
         assert "Sekda" in result
         assert "Kadis" in result
 
+    def test_jabatan_mishear(self):
+        result = normalize_indonesian("silakan sepertaris menyampaikan")
+        assert "Sekretaris" in result
+
     def test_slang_to_formal(self):
         result = normalize_indonesian("gak tau, udah aja gitu")
         assert "tidak" in result
@@ -58,6 +62,12 @@ class TestIdTerms:
     def test_normalize_no_change(self):
         text = "Ini teks normal tanpa istilah khusus."
         assert normalize_indonesian(text) == text
+
+    def test_asr_salam(self):
+        result = normalize_indonesian("selam sejah terabagi")
+        assert "selamat" in result
+        assert "sejahtera" in result
+        assert "terbagi" in result
 
     def test_sapaan(self):
         result = normalize_indonesian("bapak bapak dan ibu ibu")
