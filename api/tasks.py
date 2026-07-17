@@ -57,6 +57,7 @@ def process_audio_task(
     title="RISALAH RAPAT",
     classification="BIASA",
     doc_number="_______________",
+    lang="id",
 ):
     try:
         update_job_status(job_id, "running", 5, "Memulai pipeline...")
@@ -75,7 +76,7 @@ def process_audio_task(
         from risalah.utils import run_parallel
 
         def do_transcribe():
-            return transcribe_all(meta["chunks"], engine)
+            return transcribe_all(meta["chunks"], engine, lang=lang)
 
         def do_diarize():
             return run_diarization(meta["chunks"])
@@ -99,7 +100,7 @@ def process_audio_task(
             merged = run_diarization_pipeline(meta["chunks"], None)
 
         update_job_status(job_id, "running", 75, "AI Enhancement...")
-        enhanced = enhance_transcript(merged)
+        enhanced = enhance_transcript(merged, lang=lang)
 
         metadata = {
             "tanggal": datetime.now().strftime("%A, %d %B %Y"),
@@ -134,6 +135,7 @@ def process_folder_task(
     title="RISALAH RAPAT",
     classification="BIASA",
     doc_number="_______________",
+    lang="id",
 ):
     try:
         update_job_status(job_id, "running", 5, "Scanning folder...")
@@ -193,7 +195,7 @@ def process_folder_task(
             meta = process_audio(af, chunk_minutes=chunk_minutes)
 
             def do_transcribe_inner(meta=meta):
-                return transcribe_all(meta["chunks"], engine)
+                return transcribe_all(meta["chunks"], engine, lang=lang)
 
             def do_diarize_inner(meta=meta):
                 return run_diarization(meta["chunks"])
@@ -224,7 +226,7 @@ def process_folder_task(
                 all_enhanced_segments.extend(merged)
 
         update_job_status(job_id, "running", 85, "AI Enhancement seluruh sesi...")
-        enhanced = enhance_transcript(all_enhanced_segments)
+        enhanced = enhance_transcript(all_enhanced_segments, lang=lang)
         if extracted.get("all_text_combined", "").strip():
             enhanced["dokumen_pendukung"] = extracted
 

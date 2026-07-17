@@ -111,6 +111,110 @@ Dokumen bisa berupa: Nota Dinas, Laporan Kegiatan, RAB, Draft Perda, dll.
 DOKUMEN:
 __DOC_TEXT__"""
 
+# ── English prompts (multi-language support) ─────────────────────
+EN_SYSTEM_PROMPT = """You are a professional meeting minutes assistant with expertise in formal Indonesian government terminology.
+
+Analyze the following meeting transcript and output valid JSON (NO markdown, NO ```).
+
+REQUIRED FORMAT:
+{
+  "speaker_identification": [
+    {"label": "SPEAKER_00", "inferred_role": "Ketua Rapat", "inferred_name": "Bapak Bambang Susilo", "reason": "dipanggil 'Pak Ketua' oleh peserta lain"}
+  ],
+  "ringkasan_eksekutif": "2-3 paragraph executive summary of the meeting.",
+  "corrected_transcript": [
+    {"time": "00:02", "speaker": "Ketua Rapat", "speaker_original": "SPEAKER_00", "text": "corrected transcript text"}
+  ],
+  "pokok_bahasan": ["subject1"],
+  "keputusan_rapat": ["decision1"],
+  "kesimpulan": ["conclusion1"],
+  "tindak_lanjut": [{"tindakan": "action", "pic": "person in charge", "batas_waktu": "deadline"}],
+  "agenda_rapat": ["agenda1"],
+  "dokumen_terkait": ["documents mentioned in meeting"]
+}
+
+SPEAKER IDENTIFICATION GUIDELINES:
+- Use forms of address (Pak/Bu/Ibu + name) as primary clues
+- Note positions mentioned: Sekda, Kadis, Kabid, Kasubag, Camat, Lurah, etc.
+- Note speaking style: chairperson typically opens/closes sessions
+- If names are called by other speakers, use them for identification
+
+GOVERNMENT TERM CORRECTION GUIDE:
+- Terms often misheard by ASR: "depresi/depri" → DPRD, "musrembang" → Musrenbang
+- Budget terms: APBD, DPA, KUA-PPAS, SPJ, LPJ
+- Planning terms: Musrenbang, Renja, Renstra, RPJMD
+- Regulations: Perda, Perbup, Pergub, Permendagri
+- Institutions: BAPPEDA, BPKAD, Inspektorat, BKPSDM
+
+GENERAL GUIDELINES:
+- corrected_transcript: INCLUDE ALL SEGMENTS
+- ringkasan_eksekutif: Write 2-3 paragraphs covering background, key discussions, decisions, and directives
+- Keep sections in Indonesian (titles/terms), but reasoning in English
+
+TINDAK LANJUT (MANDATORY):
+- Generate MINIMUM 1 tindak_lanjut item
+- Each item MUST have: "tindakan" (concrete action), "pic" (person in charge), "batas_waktu" (deadline)
+
+TRANSKRIP:
+__TRANSKRIP_TEXT__"""
+
+EN_DOCUMENT_SUMMARY_PROMPT = """You are a meeting minutes assistant. Summarize the following supporting document in valid JSON.
+
+{
+  "ringkasan": "2-3 paragraph summary of the document",
+  "poin_penting": ["important points relevant to the meeting"],
+  "angka_anggaran": [{"item": "budget item name", "jumlah": "Rp X.XXX.XXX"}],
+  "keputusan_terkait": "decisions the meeting needs to make regarding this document",
+  "istilah_kunci": ["APBD", "DPA", "KUA-PPAS", "etc"]
+}
+
+DOKUMEN:
+__DOC_TEXT__"""
+
+EN_DOC_AWARE_SYSTEM_PROMPT = """You are a professional meeting minutes assistant for Indonesian government meetings.
+You receive (1) supporting document text and (2) meeting transcript.
+
+TASKS:
+- Use SUPPORTING DOCUMENTS as reference for context, technical terms,
+  government abbreviations, budget figures, and topics discussed.
+- Correct transcription errors for government terms (APBD, Perda, Permendagri,
+  Musrenbang, Renja, SPJ, TUPOKSI, DPA, KUA-PPAS, etc.).
+- Identify speakers from address forms, positions, and context.
+
+RULES:
+- DO NOT change the speaker's original intent.
+- DO NOT add fictitious information.
+- DO NOT rewrite speaker sentences — only correct misheard terms/abbreviations.
+- Preserve the speaker's original speaking style.
+
+Output valid JSON (NO markdown, NO ```):
+
+{
+  "speaker_identification": [
+    {"label": "SPEAKER_00", "inferred_role": "Ketua Rapat", "inferred_name": "...", "reason": "..."}
+  ],
+  "corrected_transcript": [
+    {"time": "00:02", "speaker": "Ketua Rapat", "speaker_original": "SPEAKER_00", "text": "corrected text"}
+  ],
+  "pokok_bahasan": ["..."],
+  "keputusan_rapat": ["...", {"nomor": "...", "isi": "..."}],
+  "kesimpulan": ["..."],
+  "tindak_lanjut": [{"tindakan": "...", "pic": "...", "batas_waktu": "..."}],
+  "agenda_rapat": ["..."],
+  "dokumen_terkait": ["referenced documents"],
+  "dokumen_dirujuk": ["supporting document names relevant to discussion"]
+}
+
+SUPPORTING DOCUMENTS:
+__DOC_CONTEXT__
+
+TRANSKRIP:
+__TRANSKRIP_TEXT__"""
+
+
+def _get_lang():
+    return os.getenv("RISALAH_LANG", "id")[:2]
+
 
 def call_llm(prompt, max_retries=3):
     for cfg in LLM_CONFIGS:
@@ -264,23 +368,42 @@ def validate_and_repair(enhanced, merged_data):
     return None
 
 
-def enhance_with_two_phase(merged_data, output_dir):
+def enhance_with_two_phase(merged_data, output_dir, lang=None):
     """Two-phase: (1) identify speakers from sample, (2) build full output."""
+    if lang is None:
+        lang = _get_lang()
     sample = prepare_transcript_text(merged_data, max_lines=200, max_chars=8000)
-    speaker_prompt = (
-        "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
-        "Analisis cuplikan transkrip rapat berikut dan identifikasi SETIAP pembicara unik.\n"
-        "Gunakan petunjuk kontekstual:\n"
-        "1. Sapaan: 'Pak/Bu/Ibu [Nama]' yang diucapkan pembicara lain\n"
-        "2. Jabatan: 'Saya sebagai Sekretaris/Kadis/Kabid...'\n"
-        "3. Peran: siapa yang membuka/menutup sesi → Ketua Rapat\n"
-        "4. Gaya bicara: formal/otoritatif vs staf teknis\n"
-        "5. Agenda: 'Saya dari Dinas...' atau 'Saya mewakili...'\n\n"
-        "Hasilkan JSON valid:\n"
-        '{"speaker_identification": [{"label": "SPEAKER_00", "inferred_role": "Ketua Rapat", '
-        '"inferred_name": "Bapak [Nama jika bisa diinfersi]", "reason": "alasan singkat"}]}\n\n'
-        "CUPLIKAN TRANSKRIP:\n" + sample
-    )
+
+    if lang == "en":
+        speaker_prompt = (
+            "You are a professional meeting minutes assistant for Indonesian government meetings.\n\n"
+            "Analyze the following transcript excerpt and identify EVERY unique speaker.\n"
+            "Use contextual clues:\n"
+            "1. Forms of address: 'Pak/Bu/Ibu [Name]' used by other speakers\n"
+            "2. Positions: 'Saya sebagai Sekretaris/Kadis/Kabid...'\n"
+            "3. Role: who opens/closes the session → Chairperson\n"
+            "4. Speaking style: formal/authoritative vs technical staff\n"
+            "5. Agenda: 'Saya dari Dinas...' or 'Saya mewakili...'\n\n"
+            "Output valid JSON (keep title/terms in Indonesian):\n"
+            '{"speaker_identification": [{"label": "SPEAKER_00", "inferred_role": "Ketua Rapat", '
+            '"inferred_name": "Bapak [Name if inferable]", "reason": "brief reason"}]}\n\n'
+            "TRANSCRIPT EXCERPT:\n" + sample
+        )
+    else:
+        speaker_prompt = (
+            "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
+            "Analisis cuplikan transkrip rapat berikut dan identifikasi SETIAP pembicara unik.\n"
+            "Gunakan petunjuk kontekstual:\n"
+            "1. Sapaan: 'Pak/Bu/Ibu [Nama]' yang diucapkan pembicara lain\n"
+            "2. Jabatan: 'Saya sebagai Sekretaris/Kadis/Kabid...'\n"
+            "3. Peran: siapa yang membuka/menutup sesi → Ketua Rapat\n"
+            "4. Gaya bicara: formal/otoritatif vs staf teknis\n"
+            "5. Agenda: 'Saya dari Dinas...' atau 'Saya mewakili...'\n\n"
+            "Hasilkan JSON valid:\n"
+            '{"speaker_identification": [{"label": "SPEAKER_00", "inferred_role": "Ketua Rapat", '
+            '"inferred_name": "Bapak [Nama jika bisa diinfersi]", "reason": "alasan singkat"}]}\n\n'
+            "CUPLIKAN TRANSKRIP:\n" + sample
+        )
     print("Phase 1: Identifikasi pembicara...")
     raw = call_llm(speaker_prompt)
     speaker_map = {}
@@ -291,15 +414,26 @@ def enhance_with_two_phase(merged_data, output_dir):
                 speaker_map[s["label"]] = s
             print(f"  {len(speaker_map)} speaker teridentifikasi")
 
-    summary_prompt = (
-        "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
-        "Berdasarkan transkrip rapat berikut, ekstrak dalam JSON valid:\n"
-        '{"pokok_bahasan": ["..."], "keputusan_rapat": ["..."], '
-        '"kesimpulan": ["..."], "tindak_lanjut": [{"tindakan": "...", '
-        '"pic": "...", "batas_waktu": "..."}], '
-        '"agenda_rapat": ["..."], "dokumen_terkait": ["..."]}\n\n'
-        "TRANSKRIP:\n" + sample
-    )
+    if lang == "en":
+        summary_prompt = (
+            "You are a professional meeting minutes assistant.\n\n"
+            "Based on the following meeting transcript, extract structured data in JSON:\n"
+            '{"pokok_bahasan": ["..."], "keputusan_rapat": ["..."], '
+            '"kesimpulan": ["..."], "tindak_lanjut": [{"tindakan": "...", '
+            '"pic": "...", "batas_waktu": "..."}], '
+            '"agenda_rapat": ["..."], "dokumen_terkait": ["..."]}\n\n'
+            "TRANSCRIPT:\n" + sample
+        )
+    else:
+        summary_prompt = (
+            "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
+            "Berdasarkan transkrip rapat berikut, ekstrak dalam JSON valid:\n"
+            '{"pokok_bahasan": ["..."], "keputusan_rapat": ["..."], '
+            '"kesimpulan": ["..."], "tindak_lanjut": [{"tindakan": "...", '
+            '"pic": "...", "batas_waktu": "..."}], '
+            '"agenda_rapat": ["..."], "dokumen_terkait": ["..."]}\n\n'
+            "TRANSKRIP:\n" + sample
+        )
     print("Phase 2: Ekstrak struktur risalah...")
     raw2 = call_llm(summary_prompt)
     summary = extract_json_robust(raw2) if raw2 else {}
@@ -346,20 +480,22 @@ def build_corrected_transcript(merged_data, speaker_map):
     return result
 
 
-def enhance_transcript(merged_data, output_dir=None):
+def enhance_transcript(merged_data, output_dir=None, lang=None):
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "enhanced")
     os.makedirs(output_dir, exist_ok=True)
+    if lang is None:
+        lang = _get_lang()
 
-    # Apply Indonesian normalization before AI enhancement
+    # Apply language-specific normalization before AI enhancement
     from risalah.id_terms import normalize_indonesian
 
     for seg in merged_data:
         if "text" in seg and seg["text"]:
             seg["text"] = normalize_indonesian(seg["text"])
 
-    print("Enhancement via LLM (Groq → 9router → Gemini)...")
-    result = enhance_with_two_phase(merged_data, output_dir)
+    print(f"Enhancement via LLM (Groq → 9router → Gemini) — lang={lang}...")
+    result = enhance_with_two_phase(merged_data, output_dir, lang)
     if result:
         return result
 
@@ -367,19 +503,32 @@ def enhance_transcript(merged_data, output_dir=None):
     return build_fallback(merged_data, output_dir)
 
 
-def try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context):
+def try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context, lang=None):
+    if lang is None:
+        lang = _get_lang()
     sample = prepare_transcript_text(merged_data, max_lines=100, max_chars=5000)
     doc_ctx_short = doc_preview[:5000] if len(doc_preview) > 5000 else doc_preview
 
-    sp_prompt = (
-        "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
-        f"Dokumen pendukung:\n{doc_ctx_short}\n\n"
-        "Berdasarkan transkrip rapat berikut dan dokumen di atas, identifikasi semua pembicara.\n"
-        "Hasilkan JSON valid:\n"
-        '{"speaker_identification": [{"label": "SPEAKER_00", '
-        '"inferred_role": "...", "inferred_name": "...", "reason": "..."}]}\n\n'
-        f"CUPLIKAN TRANSKRIP:\n{sample}"
-    )
+    if lang == "en":
+        sp_prompt = (
+            "You are a meeting minutes assistant for Indonesian government meetings.\n\n"
+            f"Supporting documents:\n{doc_ctx_short}\n\n"
+            "Based on the following transcript and documents above, identify all speakers.\n"
+            "Output valid JSON:\n"
+            '{"speaker_identification": [{"label": "SPEAKER_00", '
+            '"inferred_role": "...", "inferred_name": "...", "reason": "..."}]}\n\n'
+            f"TRANSCRIPT EXCERPT:\n{sample}"
+        )
+    else:
+        sp_prompt = (
+            "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
+            f"Dokumen pendukung:\n{doc_ctx_short}\n\n"
+            "Berdasarkan transkrip rapat berikut dan dokumen di atas, identifikasi semua pembicara.\n"
+            "Hasilkan JSON valid:\n"
+            '{"speaker_identification": [{"label": "SPEAKER_00", '
+            '"inferred_role": "...", "inferred_name": "...", "reason": "..."}]}\n\n'
+            f"CUPLIKAN TRANSKRIP:\n{sample}"
+        )
     raw = call_llm(sp_prompt)
     speaker_map = {}
     if not raw:
@@ -391,7 +540,7 @@ def try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context):
         speaker_map[s["label"]] = s
     print(f"  9router: {len(speaker_map)} speaker teridentifikasi")
 
-    enhanced = build_doc_aware_enhanced(merged_data, doc_preview, speaker_map)
+    enhanced = build_doc_aware_enhanced(merged_data, doc_preview, speaker_map, lang)
     enhanced["dokumen_analisis_mode"] = True
     enhanced["dokumen_sumber"] = [
         {"file": s["file"], "type": "dokumen" if s.get("text") else "audio"}
@@ -407,12 +556,26 @@ def try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context):
     return enhanced
 
 
-def build_doc_aware_enhanced(merged_data, doc_preview, speaker_map):
+def build_doc_aware_enhanced(merged_data, doc_preview, speaker_map, lang=None):
+    if lang is None:
+        lang = _get_lang()
     doc_ctx_short = doc_preview[:5000] if len(doc_preview) > 5000 else doc_preview
     sample = prepare_transcript_text(merged_data, max_lines=100, max_chars=5000)
-    sum_prompt = (
-        "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
-        f"Dokumen pendukung:\n{doc_ctx_short}\n\n"
+    if lang == "en":
+        sum_prompt = (
+            "You are a meeting minutes assistant for Indonesian government meetings.\n\n"
+            f"Supporting documents:\n{doc_ctx_short}\n\n"
+            "Based on the transcript and documents above, extract meeting structure in JSON:\n"
+            '{"pokok_bahasan": ["..."], "keputusan_rapat": ["..."], '
+            '"kesimpulan": ["..."], "tindak_lanjut": [...], '
+            '"agenda_rapat": ["..."], "dokumen_terkait": ["..."]}\n\n'
+            "USE documents for context, but DO NOT add fictitious information.\n"
+            f"TRANSCRIPT:\n{sample}"
+        )
+    else:
+        sum_prompt = (
+            "Anda adalah asisten risalah rapat pemerintah Indonesia.\n\n"
+            f"Dokumen pendukung:\n{doc_ctx_short}\n\n"
         "Berdasarkan transkrip dan dokumen di atas, ekstrak struktur risalah dalam JSON:\n"
         '{"pokok_bahasan": ["..."], "keputusan_rapat": ["..."], '
         '"kesimpulan": ["..."], "tindak_lanjut": [...], '
@@ -435,14 +598,17 @@ def build_doc_aware_enhanced(merged_data, doc_preview, speaker_map):
     return validate_and_repair(enhanced, merged_data)
 
 
-def enhance_document(document_text, output_dir=None):
+def enhance_document(document_text, output_dir=None, lang=None):
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "enhanced")
     os.makedirs(output_dir, exist_ok=True)
+    if lang is None:
+        lang = _get_lang()
 
     max_chars = 25000
     text = document_text[:max_chars] if len(document_text) > max_chars else document_text
-    prompt = DOCUMENT_SUMMARY_PROMPT.replace("__DOC_TEXT__", text)
+    doc_prompt = EN_DOCUMENT_SUMMARY_PROMPT if lang == "en" else DOCUMENT_SUMMARY_PROMPT
+    prompt = doc_prompt.replace("__DOC_TEXT__", text)
 
     raw = call_llm(prompt, max_retries=3)
     if raw:
@@ -494,22 +660,25 @@ TRANSKRIP:
 __TRANSKRIP_TEXT__"""
 
 
-def enhance_transcript_with_doc_context(merged_data, doc_context, output_dir=None):
+def enhance_transcript_with_doc_context(merged_data, doc_context, output_dir=None, lang=None):
     if output_dir is None:
         output_dir = os.path.join(PROJECT_ROOT, "output", "enhanced")
     os.makedirs(output_dir, exist_ok=True)
+    if lang is None:
+        lang = _get_lang()
 
     doc_preview = doc_context.get("all_text_combined", "")
     if not doc_preview.strip():
         print("  Dokumen kosong, fallback ke enhance_transcript biasa.")
-        return enhance_transcript(merged_data, output_dir)
+        return enhance_transcript(merged_data, output_dir, lang)
 
     if len(doc_preview) > 15000:
         doc_preview = doc_preview[:7500] + "\n...[TENGAH DIHAPUS]...\n" + doc_preview[-7500:]
 
     transcript_text = prepare_transcript_text(merged_data, max_chars=12000)
 
-    prompt = DOC_AWARE_SYSTEM_PROMPT.replace("__DOC_CONTEXT__", doc_preview)
+    doc_prompt = EN_DOC_AWARE_SYSTEM_PROMPT if lang == "en" else DOC_AWARE_SYSTEM_PROMPT
+    prompt = doc_prompt.replace("__DOC_CONTEXT__", doc_preview)
     prompt = prompt.replace("__TRANSKRIP_TEXT__", transcript_text)
 
     from risalah.id_terms import normalize_indonesian
@@ -518,8 +687,8 @@ def enhance_transcript_with_doc_context(merged_data, doc_context, output_dir=Non
         if "text" in seg and seg["text"]:
             seg["text"] = normalize_indonesian(seg["text"])
 
-    print("Doc-aware enhancement via LLM (Groq → 9router → Gemini)...")
-    result = try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context)
+    print(f"Doc-aware enhancement via LLM (Groq → 9router → Gemini) — lang={lang}...")
+    result = try_doc_aware_9router(merged_data, doc_preview, output_dir, doc_context, lang)
     if result:
         return result
 

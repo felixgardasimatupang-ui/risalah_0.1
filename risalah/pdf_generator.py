@@ -12,6 +12,28 @@ from fpdf import FPDF
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+_EN_LABELS = {
+    "DAFTAR HADIR": "ATTENDANCE LIST",
+    "RINGKASAN EKSEKUTIF": "EXECUTIVE SUMMARY",
+    "ISI RISALAH": "MINUTES",
+    "POKOK BAHASAN": "SUBJECTS",
+    "KEPUTUSAN": "DECISIONS",
+    "KESIMPULAN": "CONCLUSIONS",
+    "TINDAK LANJUT": "FOLLOW-UP",
+    "Pimpinan Rapat": "Meeting Chair",
+    "Mengetahui": "Acknowledged By",
+    "Sekretaris / Notulis": "Secretary",
+    "Hari/Tanggal": "Day/Date",
+    "Waktu": "Time",
+    "Tempat": "Venue",
+    "Acara": "Agenda",
+}
+
+
+def _sec(label):
+    lang = os.getenv("RISALAH_LANG", "id")[:2]
+    return _EN_LABELS.get(label, label) if lang == "en" else label
+
 
 def generate_pdf(enhanced, metadata=None, output_path=None, title="RISALAH RAPAT"):
     """Generate A4 PDF from enhanced data. Returns path or BytesIO."""
@@ -41,10 +63,10 @@ def generate_pdf(enhanced, metadata=None, output_path=None, title="RISALAH RAPAT
     m = metadata or {}
     pdf.set_font("Helvetica", "", 11)
     meta_lines = [
-        ("Hari/Tanggal", f"{m.get('hari', '___')}, {m.get('tanggal', '___')}"),
-        ("Waktu", m.get("waktu", "___")),
-        ("Tempat", m.get("tempat", "___")),
-        ("Acara", m.get("acara", "___")),
+        (_sec("Hari/Tanggal"), f"{m.get('hari', '___')}, {m.get('tanggal', '___')}"),
+        (_sec("Waktu"), m.get("waktu", "___")),
+        (_sec("Tempat"), m.get("tempat", "___")),
+        (_sec("Acara"), m.get("acara", "___")),
     ]
     for label, value in meta_lines:
         pdf.set_font("Helvetica", "B", 11)
@@ -57,7 +79,7 @@ def generate_pdf(enhanced, metadata=None, output_path=None, title="RISALAH RAPAT
     si = enhanced.get("speaker_identification", [])
     if si:
         pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, "DAFTAR HADIR", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, _sec("DAFTAR HADIR"), new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 11)
         for s in si:
             name = s.get("inferred_name", s.get("label", ""))
@@ -69,7 +91,7 @@ def generate_pdf(enhanced, metadata=None, output_path=None, title="RISALAH RAPAT
     ringkasan = enhanced.get("ringkasan_eksekutif", "")
     if ringkasan:
         pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, "RINGKASAN EKSEKUTIF", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, _sec("RINGKASAN EKSEKUTIF"), new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 11)
         ringkasan_str = ringkasan if isinstance(ringkasan, str) else str(ringkasan)
         pdf.multi_cell(0, 6, ringkasan_str)
@@ -78,7 +100,7 @@ def generate_pdf(enhanced, metadata=None, output_path=None, title="RISALAH RAPAT
     # Transcript
     transcript = enhanced.get("corrected_transcript", [])
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "ISI RISALAH", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 8, _sec("ISI RISALAH"), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 10)
     for seg in transcript:
         time = seg.get("time", "00:00")
@@ -90,10 +112,10 @@ def generate_pdf(enhanced, metadata=None, output_path=None, title="RISALAH RAPAT
 
     # Sections: pokok bahasan, keputusan, kesimpulan, tindak lanjut
     for section_label, key in [
-        ("POKOK BAHASAN", "pokok_bahasan"),
-        ("KEPUTUSAN", "keputusan_rapat"),
-        ("KESIMPULAN", "kesimpulan"),
-        ("TINDAK LANJUT", "tindak_lanjut"),
+        (_sec("POKOK BAHASAN"), "pokok_bahasan"),
+        (_sec("KEPUTUSAN"), "keputusan_rapat"),
+        (_sec("KESIMPULAN"), "kesimpulan"),
+        (_sec("TINDAK LANJUT"), "tindak_lanjut"),
     ]:
         items = enhanced.get(key, [])
         if items:
@@ -127,7 +149,7 @@ def generate_pdf(enhanced, metadata=None, output_path=None, title="RISALAH RAPAT
     pdf.ln(15)
     col_w = pdf.w - pdf.l_margin - pdf.r_margin
     x_start = pdf.l_margin
-    for i, label in enumerate(["Pimpinan Rapat", "Mengetahui", "Sekretaris / Notulis"]):
+    for i, label in enumerate([_sec("Pimpinan Rapat"), _sec("Mengetahui"), _sec("Sekretaris / Notulis")]):
         x = x_start + (col_w / 3) * i
         pdf.set_xy(x, pdf.get_y())
         pdf.set_font("Helvetica", "", 11)

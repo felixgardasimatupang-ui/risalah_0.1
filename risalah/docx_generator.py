@@ -26,6 +26,38 @@ MARGIN_BOTTOM = Cm(3)
 
 CLASSIFICATION_OPTIONS = ["BIASA", "TERBATAS", "RAHASIA"]
 
+_EN_LABELS = {
+    "DAFTAR HADIR": "ATTENDANCE LIST",
+    "RINGKASAN EKSEKUTIF": "EXECUTIVE SUMMARY",
+    "ISI RISALAH": "MINUTES",
+    "POKOK BAHASAN": "SUBJECTS",
+    "KEPUTUSAN RAPAT": "DECISIONS",
+    "KEPUTUSAN": "DECISIONS",
+    "KESIMPULAN": "CONCLUSIONS",
+    "TINDAK LANJUT": "FOLLOW-UP",
+    "LAMPIRAN": "ATTACHMENTS",
+    "INFORMASI RAPAT": "MEETING INFORMATION",
+    "Hari / Tanggal": "Day / Date",
+    "Waktu": "Time",
+    "Tempat": "Venue",
+    "Acara": "Agenda",
+    "Nama": "Name",
+    "Jabatan": "Position",
+    "Instansi": "Institution",
+    "Keterangan": "Remarks",
+    "No": "No",
+    "Hadir": "Present",
+    "Pimpinan Rapat": "Meeting Chair",
+    "Mengetahui": "Acknowledged By",
+    "Notulis": "Minutes Secretary",
+}
+
+
+def _sec(label):
+    """Return localized section label."""
+    lang = os.getenv("RISALAH_LANG", "id")[:2]
+    return _EN_LABELS.get(label, label) if lang == "en" else label
+
 
 def set_page_setup(doc):
     for section in doc.sections:
@@ -132,7 +164,7 @@ def add_title_block(doc, title="RISALAH RAPAT", classification="BIASA"):
 def add_metadata(doc, metadata):
     add_formal_paragraph(
         doc,
-        "INFORMASI RAPAT",
+        _sec("INFORMASI RAPAT"),
         size=FONT_SIZE_HEADING,
         bold=True,
         align=WD_ALIGN_PARAGRAPH.LEFT,
@@ -140,8 +172,8 @@ def add_metadata(doc, metadata):
     )
 
     fields = [
-        ("Hari / Tanggal", metadata.get("tanggal", "_______________")),
-        ("Waktu", metadata.get("waktu", "_______________")),
+        (_sec("Hari / Tanggal"), metadata.get("tanggal", "_______________")),
+        (_sec("Waktu"), metadata.get("waktu", "_______________")),
         ("Tempat", metadata.get("tempat", "_______________")),
         ("Acara", metadata.get("acara", "_______________")),
     ]
@@ -159,7 +191,7 @@ def add_metadata(doc, metadata):
 def add_attendees(doc, speakers):
     add_formal_paragraph(
         doc,
-        "DAFTAR HADIR",
+        _sec("DAFTAR HADIR"),
         size=FONT_SIZE_HEADING,
         bold=True,
         align=WD_ALIGN_PARAGRAPH.LEFT,
@@ -170,7 +202,7 @@ def add_attendees(doc, speakers):
     set_table_borders(table)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-    headers = ["No", "Nama", "Jabatan", "Instansi", "Keterangan"]
+    headers = [_sec("No"), _sec("Nama"), _sec("Jabatan"), _sec("Instansi"), _sec("Keterangan")]
     for i, h in enumerate(headers):
         set_cell_font(
             table.rows[0].cells[i],
@@ -191,12 +223,12 @@ def add_attendees(doc, speakers):
         set_cell_font(row[1], name)
         set_cell_font(row[2], spk.get("inferred_role", ""))
         set_cell_font(row[3], "_______________")
-        set_cell_font(row[4], "Hadir")
+        set_cell_font(row[4], _sec("Hadir"))
 
     if not seen:
         row = table.add_row().cells
         for i, v in enumerate(
-            ["1", "_______________", "_______________", "_______________", "Hadir"]
+            ["1", "_______________", "_______________", "_______________", _sec("Hadir")]
         ):
             set_cell_font(row[i], v)
 
@@ -206,7 +238,7 @@ def add_ringkasan_eksekutif(doc, ringkasan):
         return
     add_formal_paragraph(
         doc,
-        "RINGKASAN EKSEKUTIF",
+        _sec("RINGKASAN EKSEKUTIF"),
         size=FONT_SIZE_HEADING,
         bold=True,
         align=WD_ALIGN_PARAGRAPH.LEFT,
@@ -228,7 +260,7 @@ def add_ringkasan_eksekutif(doc, ringkasan):
 def add_transcript(doc, corrected, max_rows=200):
     add_formal_paragraph(
         doc,
-        "ISI RISALAH",
+        _sec("ISI RISALAH"),
         size=FONT_SIZE_HEADING,
         bold=True,
         align=WD_ALIGN_PARAGRAPH.LEFT,
@@ -275,9 +307,9 @@ def add_transcript(doc, corrected, max_rows=200):
 
 def add_sections(doc, data):
     items = [
-        ("POKOK BAHASAN", data.get("pokok_bahasan", [])),
-        ("KEPUTUSAN RAPAT", data.get("keputusan_rapat", [])),
-        ("KESIMPULAN", data.get("kesimpulan", [])),
+        (_sec("POKOK BAHASAN"), data.get("pokok_bahasan", [])),
+        (_sec("KEPUTUSAN RAPAT"), data.get("keputusan_rapat", [])),
+        (_sec("KESIMPULAN"), data.get("kesimpulan", [])),
         ("AGENDA RAPAT", data.get("agenda_rapat", [])),
     ]
     for title, list_items in items:
@@ -293,7 +325,7 @@ def add_sections(doc, data):
         )
         for item in list_items:
             p = doc.add_paragraph(
-                style="List Number" if title == "KEPUTUSAN RAPAT" else "List Bullet"
+                style="List Number" if title == "KEPUTUSAN RAPAT" or title == _sec("KEPUTUSAN RAPAT") else "List Bullet"
             )
             p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             set_paragraph_spacing(p, line_spacing=1.5, space_after=Pt(3))
@@ -303,7 +335,7 @@ def add_sections(doc, data):
     tl = data.get("tindak_lanjut", [])
     add_formal_paragraph(
         doc,
-        "TINDAK LANJUT",
+        _sec("TINDAK LANJUT"),
         size=FONT_SIZE_HEADING,
         bold=True,
         align=WD_ALIGN_PARAGRAPH.LEFT,
@@ -348,7 +380,7 @@ def add_appendix(doc, data):
     doc.add_page_break()
     add_formal_paragraph(
         doc,
-        "LAMPIRAN",
+        _sec("LAMPIRAN"),
         size=FONT_SIZE_TITLE,
         bold=True,
         align=WD_ALIGN_PARAGRAPH.CENTER,

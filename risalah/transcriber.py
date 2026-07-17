@@ -12,11 +12,13 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CACHE_DIR = os.path.join(PROJECT_ROOT, "output", "transcripts")
 
 
-def transcribe_with_whisper(chunks, output_dir=None, model_name=None):
+def transcribe_with_whisper(chunks, output_dir=None, model_name=None, lang=None):
     if model_name is None:
         model_name = os.getenv("WHISPER_MODEL", "large-v3")
     if output_dir is None:
         output_dir = CACHE_DIR
+    if lang is None:
+        lang = os.getenv("RISALAH_LANG", "id")[:2]
     os.makedirs(output_dir, exist_ok=True)
 
     device = "cpu"
@@ -43,7 +45,7 @@ def transcribe_with_whisper(chunks, output_dir=None, model_name=None):
         chunk_cache_key = make_cache_key(chunk["name"], "whisper")
 
         def do_transcribe(c=chunk):
-            result = model.transcribe(c["mp3"], language="id", verbose=False, fp16=False)
+            result = model.transcribe(c["mp3"], language=lang, verbose=False, fp16=False)
             segments = [
                 {
                     "start": round(s["start"], 2),
@@ -70,11 +72,14 @@ def transcribe_with_whisper(chunks, output_dir=None, model_name=None):
     return all_results
 
 
-def transcribe_with_assemblyai(chunks, output_dir=None):
+def transcribe_with_assemblyai(chunks, output_dir=None, lang=None):
     import assemblyai as aai
     from dotenv import load_dotenv
 
     load_dotenv()
+
+    if lang is None:
+        lang = os.getenv("RISALAH_LANG", "id")[:2]
 
     api_key = os.getenv("ASSEMBLYAI_API_KEY")
     if not api_key or api_key == "your_assemblyai_api_key_here":
@@ -86,7 +91,7 @@ def transcribe_with_assemblyai(chunks, output_dir=None):
     os.makedirs(output_dir, exist_ok=True)
 
     config = aai.TranscriptionConfig(
-        speaker_labels=True, language_code="id", punctuate=True, format_text=True
+        speaker_labels=True, language_code=lang, punctuate=True, format_text=True
     )
     transcriber = aai.Transcriber()
 
@@ -140,10 +145,12 @@ def transcribe_with_assemblyai(chunks, output_dir=None):
     return all_results
 
 
-def transcribe_all(chunks, engine="whisper", output_dir=None):
+def transcribe_all(chunks, engine="whisper", output_dir=None, lang=None):
     if output_dir is None:
         output_dir = CACHE_DIR
     os.makedirs(output_dir, exist_ok=True)
+    if lang is None:
+        lang = os.getenv("RISALAH_LANG", "id")[:2]
 
     engines = {
         "whisper": transcribe_with_whisper,
@@ -153,8 +160,8 @@ def transcribe_all(chunks, engine="whisper", output_dir=None):
     if engine not in engines:
         raise ValueError(f"Engine '{engine}' tidak dikenal. Pilih: {list(engines.keys())}")
 
-    ck = make_cache_key("transcribe_all", engine, *[c["name"] for c in chunks])
-    result = cache_check(output_dir, ck, lambda: engines[engine](chunks, output_dir))
+    ck = make_cache_key("transcribe_all", engine, lang, *[c["name"] for c in chunks])
+    result = cache_check(output_dir, ck, lambda: engines[engine](chunks, output_dir, lang))
     return result
 
 

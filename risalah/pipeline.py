@@ -108,7 +108,7 @@ def stage_diarize(chunks, transcript):
     return run_diarization_pipeline(chunks, transcript, output_dir=out("diarization"))
 
 
-def stage_enhance(merged, extracted_text=None, doc_analysis=False):
+def stage_enhance(merged, extracted_text=None, doc_analysis=False, lang=None):
     from risalah.ai_enhancer import enhance_document, enhance_transcript
 
     print("=" * 60)
@@ -120,10 +120,10 @@ def stage_enhance(merged, extracted_text=None, doc_analysis=False):
 
         print("  Mode: Analisis dokumen pendukung aktif")
         enhanced = enhance_transcript_with_doc_context(
-            merged, extracted_text, output_dir=out("enhanced")
+            merged, extracted_text, output_dir=out("enhanced"), lang=lang
         )
     else:
-        enhanced = enhance_transcript(merged, output_dir=out("enhanced"))
+        enhanced = enhance_transcript(merged, output_dir=out("enhanced"), lang=lang)
 
     if extracted_text and extracted_text.get("all_text_combined", "").strip():
         enhanced["dokumen_pendukung"] = extracted_text
@@ -178,10 +178,12 @@ def stage_generate_docx(
         )
 
 
-def _run_parallel_stages(meta, engine, skip):
+def _run_parallel_stages(meta, engine, skip, lang=None):
     """Execute transcribe + diarize in parallel. Returns (transcript, merged)."""
     if "transcribe" in skip or "diarize" in skip:
         return None, None
+    if lang is None:
+        lang = os.getenv("RISALAH_LANG", "id")[:2]
 
     from risalah.diarizer import merge_transcript_with_diarization, run_diarization
     from risalah.transcriber import transcribe_all
@@ -192,7 +194,7 @@ def _run_parallel_stages(meta, engine, skip):
     print("=" * 60)
 
     def do_transcribe():
-        return transcribe_all(meta["chunks"], engine, output_dir=out("transcripts"))
+        return transcribe_all(meta["chunks"], engine, output_dir=out("transcripts"), lang=lang)
 
     def do_diarize():
         return run_diarization(meta["chunks"], output_dir=out("diarization"))
@@ -246,6 +248,7 @@ def process_single_audio(
     doc_analysis=False,
     parallel=True,
     overwrite=False,
+    lang=None,
 ):
     meta = stage_ingest_split(file_path, chunk_minutes) if "ingest" not in skip else None
     if not meta:
@@ -256,7 +259,7 @@ def process_single_audio(
     transcript, merged = None, None
 
     if parallel:
-        transcript, merged = _run_parallel_stages(meta, engine, skip)
+        transcript, merged = _run_parallel_stages(meta, engine, skip, lang)
 
     # Sequential fallback untuk transkripsi
     if transcript is None and "transcribe" not in skip:
@@ -277,14 +280,16 @@ def process_single_audio(
         merged = _fallback_merged(transcript)
 
     return _build_result(file_path, merged, extracted_text, doc_analysis, preview,
-                         doc_number, classification, title)
+                         doc_number, classification, title, lang)
 
 
 def _build_result(file_path, merged, extracted_text, doc_analysis,
-                  preview, doc_number, classification, title):
+                  preview, doc_number, classification, title, lang=None):
     """Enhance transcript and generate DOCX."""
+    if lang is None:
+        lang = os.getenv("RISALAH_LANG", "id")[:2]
     merged = correct_transcript(merged)
-    enhanced = stage_enhance(merged, extracted_text, doc_analysis)
+    enhanced = stage_enhance(merged, extracted_text, doc_analysis, lang)
     metadata = {
         "tanggal": datetime.now().strftime("%A, %d %B %Y"),
         "waktu": "_______________ - selesai",
@@ -307,6 +312,7 @@ def run_pipeline(
     doc_folder=None,
     parallel=True,
     overwrite=False,
+    lang=None,
 ):
     if skip_stages is None:
         skip_stages = []
@@ -368,6 +374,7 @@ def run_pipeline(
                 doc_analysis=doc_analysis,
                 parallel=parallel,
                 overwrite=overwrite,
+                lang=lang,
             )
             if result:
                 generated.append(result)
@@ -398,6 +405,7 @@ def run_pipeline(
             doc_analysis=doc_analysis,
             parallel=parallel,
             overwrite=overwrite,
+            lang=lang,
         )
         if result:
             print(f"\n{'=' * 60}")
@@ -447,6 +455,7 @@ def main():
         choices=["ingest", "transcribe", "diarize", "enhance", "docx"],
         default=[],
     )
+    parser.add_argument("--lang", choices=["id", "en"], default=None, help="Bahasa (id/en)")
     parser.add_argument(
         "--stage",
         choices=[
@@ -503,6 +512,7 @@ def main():
         doc_folder=args.doc_folder,
         parallel=not args.no_parallel,
         overwrite=args.overwrite,
+        lang=args.lang,
     )
 
 

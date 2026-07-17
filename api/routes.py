@@ -86,6 +86,7 @@ async def create_transcribe_job(
     title: str = Form("RISALAH RAPAT"),
     classification: str = Form("BIASA"),
     doc_number: str = Form("_______________"),
+    lang: str = Form("id"),
 ):
     if not os.path.exists(file_path):
         raise HTTPException(400, f"File tidak ditemukan: {file_path}")
@@ -107,11 +108,11 @@ async def create_transcribe_job(
     is_folder = os.path.isdir(file_path)
     if is_folder:
         process_folder_task.delay(
-            job_id, file_path, engine, chunk_minutes, title, classification, doc_number
+            job_id, file_path, engine, chunk_minutes, title, classification, doc_number, lang
         )
     else:
         process_audio_task.delay(
-            job_id, file_path, engine, chunk_minutes, title, classification, doc_number
+            job_id, file_path, engine, chunk_minutes, title, classification, doc_number, lang
         )
 
     return _job_to_response(get_job_status(job_id) or {})

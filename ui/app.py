@@ -64,7 +64,7 @@ def upload_file(file_bytes, filename):
     return _api_req("POST", "/upload", files={"file": (filename, file_bytes)}, timeout=60)
 
 
-def start_job(file_path, file_name, engine, chunk_minutes, title, classification, doc_number):
+def start_job(file_path, file_name, engine, chunk_minutes, title, classification, doc_number, lang="id"):
     return _api_req(
         "POST", "/transcribe",
         data={
@@ -75,6 +75,7 @@ def start_job(file_path, file_name, engine, chunk_minutes, title, classification
             "title": title,
             "classification": classification,
             "doc_number": doc_number,
+            "lang": lang,
         },
         timeout=15,
     )
@@ -168,6 +169,9 @@ else:
     st.sidebar.json(health)
 
 st.sidebar.markdown("---")
+lang = st.sidebar.selectbox("Bahasa / Language", ["id", "en"], index=0, help="id=Indonesia, en=English")
+st.session_state["lang"] = lang
+st.sidebar.markdown("---")
 st.sidebar.markdown("### Navigasi")
 page = st.sidebar.radio("Menu", ["Upload & Transkripsi", "Rekam Langsung", "Riwayat Job", "Dokumen Pendukung", "Panduan"])
 
@@ -225,6 +229,7 @@ if page == "Upload & Transkripsi":
                                 title,
                                 classification,
                                 doc_number,
+                                st.session_state.get("lang", "id"),
                             )
                             err2 = job.get("error") if isinstance(job, dict) else None
                             if err2:
@@ -246,6 +251,7 @@ if page == "Upload & Transkripsi":
                                 title,
                                 classification,
                                 doc_number,
+                                st.session_state.get("lang", "id"),
                             )
                             err = job.get("error") if isinstance(job, dict) else None
                             if err:

@@ -1,3 +1,4 @@
+import os
 import re
 
 # ── Government terms & institutions ─────────────────────────
@@ -431,7 +432,11 @@ def correct_transcript(merged: list[dict]) -> list[dict]:
 
 
 def normalize_indonesian(text: str) -> str:
-    """Full normalization: slang removal, government terms, ASR fixes."""
+    """Full normalization: slang removal, government terms, ASR fixes.
+    Skips normalization for non-Indonesian languages."""
+    lang = os.getenv("RISALAH_LANG", "id")[:2]  # handle system LANG like "en_US.UTF-8"
+    if lang != "id":
+        return text.strip()
     text = correct_terms(text)
 
     # Collapse multiple spaces (preserve newlines)
