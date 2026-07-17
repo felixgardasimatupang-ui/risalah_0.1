@@ -37,6 +37,8 @@ class JobResponse(BaseModel):
     preview_text: Optional[str] = None
     created_at: str = ""
     updated_at: str = ""
+    dokumen_pendukung: Optional[dict] = None
+    scan_result: Optional[dict] = None
 
 
 class JobListResponse(BaseModel):

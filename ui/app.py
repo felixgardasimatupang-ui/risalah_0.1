@@ -153,7 +153,7 @@ else:
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Navigasi")
-page = st.sidebar.radio("Menu", ["Upload & Transkripsi", "Rekam Langsung", "Riwayat Job", "Panduan"])
+page = st.sidebar.radio("Menu", ["Upload & Transkripsi", "Rekam Langsung", "Riwayat Job", "Dokumen Pendukung", "Panduan"])
 
 if page == "Upload & Transkripsi":
     st.markdown(
@@ -433,6 +433,49 @@ elif page == "Riwayat Job":
 
         if jobs:
             st.caption(f"🗄 Cache lokal: {len(jobs)} job tersimpan")
+
+elif page == "Dokumen Pendukung":
+    st.markdown(
+        '<div class="main-header"><h2>📎 Dokumen Pendukung</h2></div>',
+        unsafe_allow_html=True,
+    )
+
+    def _load_scan():
+        p = os.path.join(PROJECT_ROOT, "output", "scan_results.json")
+        if os.path.exists(p):
+            with open(p, encoding="utf-8") as f:
+                return json.load(f)
+        return None
+
+    scan = _load_scan()
+    if not scan:
+        st.info("Belum ada hasil scan. Jalankan pipeline mode folder untuk melihat dokumen pendukung.")
+    else:
+        st.caption(f"Folder: `{scan['folder']}` | Scan: {scan['scan_time'][:19]} | {scan['total_files']} file")
+
+        icons = {"audio": "🎵", "image": "🖼", "document": "📄", "text": "📝", "spreadsheet": "📊"}
+
+        for _type, label in [("audio", "Audio"), ("document", "Dokumen"), ("image", "Gambar"),
+                              ("text", "Teks"), ("spreadsheet", "Spreadsheet")]:
+            files = scan.get(f"{_type}_files", [])
+            if not files:
+                continue
+            with st.expander(f"{icons.get(_type, '📁')} {label} ({len(files)})"):
+                for f in files:
+                    sz = f.get("size_bytes", 0)
+                    sz_str = f"{sz/1024:.1f} KB" if sz > 0 else "0 B"
+                    st.markdown(f"- `{f['name']}` ({sz_str})")
+
+        # Show extracted text if available
+        ext_path = os.path.join(PROJECT_ROOT, "output", "extracted_text", "extracted_text.json")
+        if os.path.exists(ext_path):
+            with open(ext_path, encoding="utf-8") as f:
+                ext = json.load(f)
+            combined = ext.get("all_text_combined", "").strip()
+            with st.expander(f"📄 Teks Terekstrak ({len(combined)} chars)", expanded=False):
+                st.text(combined[:10000] if len(combined) > 10000 else combined)
+                if len(combined) > 10000:
+                    st.caption(f"... dan {len(combined) - 10000} karakter lagi")
 
 elif page == "Panduan":
     st.markdown(

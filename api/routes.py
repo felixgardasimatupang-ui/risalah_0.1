@@ -35,6 +35,8 @@ def _job_to_response(raw: dict) -> JobResponse:
         preview_text=raw.get("preview_text"),
         created_at=raw.get("created_at", ""),
         updated_at=raw.get("updated_at", ""),
+        dokumen_pendukung=raw.get("dokumen_pendukung"),
+        scan_result=raw.get("scan_result"),
     )
 
 
