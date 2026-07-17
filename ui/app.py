@@ -397,7 +397,7 @@ elif page == "Riwayat Job":
     _total_jobs = len(jobs)
     if search_q:
         q = search_q.lower()
-        jobs = [j for j in jobs if q in j.get("file_name", "").lower() or q in j.get("message", "").lower()]
+        jobs = [j for j in jobs if q in (j.get("file_name", "") + j.get("message", "") + j.get("preview_text", "")).lower()]
 
     if not jobs:
         st.info("Tidak ada job" if not search_q else f"Tidak ditemukan job untuk \"{search_q}\"")
@@ -416,7 +416,7 @@ elif page == "Riwayat Job":
                 )
             with c3:
                 if j["status"] == "completed" and j.get("result_path"):
-                    with st.popover("📥 Export", use_container_width=True):
+                    with st.popover("📥 Export / Share", use_container_width=True):
                         docx_data = download_result(j["id"])
                         if docx_data:
                             st.download_button(
@@ -435,6 +435,25 @@ elif page == "Riwayat Job":
                                 key=f"txt_{j['id']}",
                                 use_container_width=True,
                             )
+                        st.divider()
+                        st.caption("📧 Share via Email")
+                        share_to = st.text_input("Email tujuan", key=f"em_{j['id']}")
+                        if st.button("Kirim", key=f"send_{j['id']}", use_container_width=True):
+                            if share_to and docx_data:
+                                from risalah.email_utils import send_docx_email
+                                ok, msg = send_docx_email(
+                                    share_to,
+                                    f"Risalah Rapat: {j.get('file_name', '')}",
+                                    f"Berikut risalah rapat {j.get('file_name', '')}.\n\n{preview[:1000] if preview else ''}",
+                                    docx_data,
+                                    filename=j.get("file_name", "risalah.docx"),
+                                )
+                                if ok:
+                                    st.success(msg)
+                                else:
+                                    st.error(f"Gagal: {msg}")
+                            else:
+                                st.warning("Isi email tujuan")
                 elif j["status"] == "running":
                     if st.button("⏹", key=f"cancel_{j['id']}"):
                         requests.delete(f"{API_BASE}/jobs/{j['id']}", timeout=5)
@@ -443,6 +462,25 @@ elif page == "Riwayat Job":
             if preview:
                 with st.expander("📝 Preview"):
                     st.text(preview[:2000])
+                if j["status"] == "completed":
+                    with st.expander("✏️ Edit & Download"):
+                        edited = st.text_area("Edit teks", preview, height=300, key=f"ed_{j['id']}")
+                        metadata = {
+                            "acara": j.get("file_name", "Rapat"),
+                            "tanggal": j.get("created_at", "")[:10],
+                        }
+                        if st.button("⬇️ Download DOCX (Hasil Edit)", key=f"ed_dl_{j['id']}"):
+                            from risalah.docx_generator import render_edited_to_docx
+                            buf = render_edited_to_docx(edited, metadata, title="RISALAH RAPAT")
+                            fname = j.get("file_name", j["id"][:12]).replace(" ", "_")
+                            st.download_button(
+                                "📄 Simpan DOCX",
+                                buf,
+                                file_name=f"{fname}_edited.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                key=f"ed_save_{j['id']}",
+                                use_container_width=True,
+                            )
             st.divider()
 
         if jobs:

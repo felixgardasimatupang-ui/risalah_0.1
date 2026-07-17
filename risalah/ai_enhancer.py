@@ -45,6 +45,7 @@ FORMAT WAJIB:
   "speaker_identification": [
     {"label": "SPEAKER_00", "inferred_role": "Ketua Rapat", "inferred_name": "Bapak Bambang Susilo", "reason": "dipanggil 'Pak Ketua' oleh peserta lain"}
   ],
+  "ringkasan_eksekutif": "2-3 paragraf ringkasan esktrakutif tentang jalannya rapat, keputusan utama, dan arahan pimpinan rapat.",
   "corrected_transcript": [
     {"time": "00:02", "speaker": "Ketua Rapat", "speaker_original": "SPEAKER_00", "text": "teks setelah koreksi istilah pemerintahan"}
   ],
@@ -80,9 +81,16 @@ PANDUAN KOREKSI ISTILAH PEMERINTAHAN:
 
 PANDUAN UMUM:
 - corrected_transcript: TULIS SEMUA SEGMEN, jangan lewatkan satu pun
+- ringkasan_eksekutif: Tulis 2-3 paragraf, cover latar belakang rapat, bahasan utama, keputusan kunci, dan arahan pimpinan
 - Koreksi ejaan bahasa Indonesia yang tidak baku (misal: "gak" → "tidak", "udah" → "sudah")
 - Jangan mengubah maksud asli pembicara
 - Pertahankan gaya bahasa asli — koreksi hanya istilah yang memang salah dengar
+
+PANDUAN TINDAK LANJUT (WAJIB):
+- Wajib generate MINIMAL 1 item tindak_lanjut
+- Setiap item WAJIB punya: "tindakan" (aksi konkret), "pic" (nama/ jabatan penanggung jawab), "batas_waktu" (tanggal/ periode)
+- Jika rapat tidak membahas tindak lanjut secara eksplisit, tetap buat minimal 1 berdasarkan keputusan rapat
+- Contoh: {"tindakan": "Menyusun DPA perubahan sesuai arahan Sekda", "pic": "Kabid Anggaran", "batas_waktu": "1 minggu"}
 
 TRANSKRIP:
 __TRANSKRIP_TEXT__"""

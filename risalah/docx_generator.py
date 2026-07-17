@@ -2,6 +2,7 @@ import json
 import os
 import sys
 from datetime import datetime
+from io import BytesIO
 
 from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -198,6 +199,30 @@ def add_attendees(doc, speakers):
             ["1", "_______________", "_______________", "_______________", "Hadir"]
         ):
             set_cell_font(row[i], v)
+
+
+def add_ringkasan_eksekutif(doc, ringkasan):
+    if not ringkasan:
+        return
+    add_formal_paragraph(
+        doc,
+        "RINGKASAN EKSEKUTIF",
+        size=FONT_SIZE_HEADING,
+        bold=True,
+        align=WD_ALIGN_PARAGRAPH.LEFT,
+        space_after=Pt(6),
+    )
+    paragraphs = ringkasan.split("\n") if isinstance(ringkasan, str) else [str(ringkasan)]
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        set_paragraph_spacing(p, line_spacing=1.5, space_after=Pt(6))
+        run = p.add_run(para)
+        set_run_font(run, size=FONT_SIZE_BODY)
+    doc.add_paragraph()
 
 
 def add_transcript(doc, corrected, max_rows=200):
@@ -442,6 +467,7 @@ def generate_risalah(
     doc.add_paragraph()
     add_attendees(doc, enhanced.get("speaker_identification", []))
     doc.add_paragraph()
+    add_ringkasan_eksekutif(doc, enhanced.get("ringkasan_eksekutif", ""))
     add_transcript(doc, enhanced.get("corrected_transcript", []))
     doc.add_paragraph()
     add_sections(doc, enhanced)
@@ -474,6 +500,15 @@ def generate_preview_text(enhanced, metadata=None, max_segments=50):
             lines.append(
                 f"  - {s.get('inferred_name', s.get('label', ''))} ({s.get('inferred_role', '')})"
             )
+        lines.append("")
+
+    ringkasan = enhanced.get("ringkasan_eksekutif", "")
+    if ringkasan:
+        lines.append("RINGKASAN EKSEKUTIF:")
+        lines.append("-" * 60)
+        lines.append(ringkasan if isinstance(ringkasan, str) else str(ringkasan))
+        lines.append("")
+        lines.append("-" * 60)
         lines.append("")
 
     lines.append(
@@ -517,6 +552,34 @@ def generate_preview_text(enhanced, metadata=None, max_segments=50):
     lines.append("=" * 60)
 
     return "\n".join(lines)
+
+
+def render_edited_to_docx(edited_text, metadata=None, title="RISALAH RAPAT", doc_number="_______________", classification="BIASA"):
+    """Create formal DOCX from edited plain text. Returns BytesIO."""
+    if classification not in CLASSIFICATION_OPTIONS:
+        classification = "BIASA"
+    doc = Document()
+    set_page_setup(doc)
+    add_header_footer(doc, doc_number, classification)
+    add_title_block(doc, title, classification)
+    add_metadata(doc, metadata or {})
+    add_formal_paragraph(doc, "ISI RISALAH (Hasil Edit)", size=FONT_SIZE_HEADING, bold=True, align=WD_ALIGN_PARAGRAPH.LEFT, space_after=Pt(6))
+    for line in edited_text.split("\n"):
+        line = line.strip()
+        if not line:
+            doc.add_paragraph()
+            continue
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        set_paragraph_spacing(p, line_spacing=1.5, space_after=Pt(3))
+        run = p.add_run(line)
+        set_run_font(run, size=FONT_SIZE_BODY)
+    doc.add_paragraph()
+    add_signature(doc)
+    buf = BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf
 
 
 if __name__ == "__main__":
