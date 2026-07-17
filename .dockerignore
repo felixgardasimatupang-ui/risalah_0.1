@@ -1,0 +1,14 @@
+.venv
+.venv/
+__pycache__
+*.pyc
+.git
+.gitignore
+.gitattributes
+*.md
+test_*
+tests/
+.output/
+uploads/
+notebooks/
+.DS_Store
