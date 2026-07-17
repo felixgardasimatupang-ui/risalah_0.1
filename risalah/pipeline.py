@@ -350,7 +350,8 @@ def run_pipeline(
                 "dokumen_pendukung": extracted_text,
             }
             stage_generate_docx(fallback, dummy, preview, doc_number, classification, title)
-            return
+            print("No audio files found in folder.")
+            return None
 
         print(f"\n{len(audio_files)} file audio ditemukan.")
         generated = []
@@ -384,6 +385,7 @@ def run_pipeline(
         for g in generated:
             print(f"  - {g}")
         print(f"{'=' * 60}")
+        return generated
 
     else:
         set_session_base(input_path)
@@ -411,6 +413,7 @@ def run_pipeline(
             print(f"\n{'=' * 60}")
             print(f"{'PREVIEW' if preview else 'RISALAH'}: {result}")
             print(f"{'=' * 60}")
+        return result
 
 
 def main():

@@ -9,7 +9,7 @@ class TestIdTerms:
         """Ensure 'bkn' doesn't match inside 'pembelajaran'."""
         result = normalize_indonesian("pembelajaran hari ini")
         # 'pembelajaran' should not be affected
-        assert "pembelajaran" in result
+        assert "pembelajaran" in result.lower()
 
     def test_institusi(self):
         result = normalize_indonesian("apbd perubahan sudah di setujui dprd")
@@ -27,9 +27,9 @@ class TestIdTerms:
 
     def test_slang_to_formal(self):
         result = normalize_indonesian("gak tau, udah aja gitu")
-        assert "tidak" in result
-        assert "sudah" in result
-        assert "saja" in result
+        assert "tidak" in result.lower()
+        assert "sudah" in result.lower()
+        assert "saja" in result.lower()
 
     def test_daerah(self):
         result = normalize_indonesian("kulty bandung")
@@ -65,9 +65,9 @@ class TestIdTerms:
 
     def test_asr_salam(self):
         result = normalize_indonesian("selam sejah terabagi")
-        assert "selamat" in result
-        assert "sejahtera" in result
-        assert "terbagi" in result
+        assert "selamat" in result.lower()
+        assert "sejahtera" in result.lower()
+        assert "terbagi" in result.lower()
 
     def test_sapaan(self):
         result = normalize_indonesian("bapak bapak dan ibu ibu")
@@ -78,6 +78,6 @@ class TestIdTerms:
         text = "gak tau\nudah aja\nbikin laporan"
         result = normalize_indonesian(text)
         assert "\n" in result
-        assert "tidak" in result
-        assert "sudah" in result
-        assert "membuat" in result
+        assert "tidak" in result.lower()
+        assert "sudah" in result.lower()
+        assert "membuat" in result.lower()

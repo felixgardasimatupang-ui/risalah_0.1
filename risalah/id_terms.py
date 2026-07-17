@@ -436,8 +436,13 @@ def correct_transcript(merged: list[dict]) -> list[dict]:
     return merged
 
 
+def _capitalize_sentences(text: str) -> str:
+    """Capitalize first letter of each sentence."""
+    return re.sub(r'(^|[.!?]\s+)([a-z])', lambda m: m.group(1) + m.group(2).upper(), text)
+
+
 def normalize_indonesian(text: str) -> str:
-    """Full normalization: slang removal, government terms, ASR fixes.
+    """Full normalization: slang removal, government terms, ASR fixes, sentence case.
     Skips normalization for non-Indonesian languages."""
     lang = os.getenv("RISALAH_LANG", "id")[:2]  # handle system LANG like "en_US.UTF-8"
     if lang != "id":
@@ -449,5 +454,7 @@ def normalize_indonesian(text: str) -> str:
 
     # Trim punctuation spacing
     text = re.sub(r'\s+([,.;:!?])', r'\1', text)
+
+    text = _capitalize_sentences(text)
 
     return text.strip()
