@@ -173,7 +173,7 @@ lang = st.sidebar.selectbox("Bahasa / Language", ["id", "en"], index=0, help="id
 st.session_state["lang"] = lang
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Navigasi")
-page = st.sidebar.radio("Menu", ["Upload & Transkripsi", "Rekam Langsung", "Riwayat Job", "Dokumen Pendukung", "Panduan"])
+page = st.sidebar.radio("Menu", ["Upload & Transkripsi", "Rekam Langsung", "Riwayat Job", "📚 Arsip", "Dokumen Pendukung", "Panduan"])
 
 if page == "Upload & Transkripsi":
     st.markdown(
@@ -513,6 +513,50 @@ elif page == "Riwayat Job":
 
         if jobs:
             st.caption(f"🗄 Cache lokal: {len(jobs)} job tersimpan")
+
+elif page == "📚 Arsip":
+    st.markdown('<div class="main-header"><h2>📚 Arsip Risalah</h2><p>Cari seluruh notulen dari cache lokal</p></div>', unsafe_allow_html=True)
+
+    from risalah.job_cache import search_archive
+
+    query = st.text_input("🔍 Cari di seluruh arsip (judul, isi notulen)", placeholder="Ketik kata kunci...")
+    limit = st.slider("Maks hasil", 10, 100, 50, key="arc_limit")
+
+    results = search_archive(query, limit) if query else []
+    if not query:
+        st.info("Masukkan kata kunci untuk mencari di seluruh arsip risalah.")
+    elif not results:
+        st.warning(f'Tidak ditemukan hasil untuk "{query}"')
+    else:
+        st.success(f"{len(results)} hasil untuk \"{query}\"")
+        for j in results:
+            title = j.get("file_name", j["id"][:12])
+            created = j.get("created_at", "")[:19]
+            st.markdown(f'<div class="job-card"><strong>{title}</strong> <span class="status-badge status-completed">ARSIP</span><br><small>{created} | {j.get("message", "")[:80]}</small></div>', unsafe_allow_html=True)
+
+            full = j.get("full_text", j.get("preview_text", ""))
+            # Highlight matches
+            if query:
+                import re
+                highlighted = re.sub(f'(?i)({re.escape(query)})', r'<mark>\1</mark>', full[:3000])
+            else:
+                highlighted = full[:3000]
+            with st.expander("📄 Lihat isi"):
+                st.markdown(f'<div style="white-space:pre-wrap;font-family:monospace;font-size:13px">{highlighted}</div>{"<br><em>... dan seterusnya</em>" if len(full) > 3000 else ""}', unsafe_allow_html=True)
+                cc1, cc2, cc3 = st.columns(3)
+                docx_data = download_result(j["id"])
+                if docx_data:
+                    with cc1:
+                        st.download_button("📄 DOCX", docx_data, file_name=f"{title}.docx", key=f"arc_dl_{j['id']}", use_container_width=True)
+                    with cc2:
+                        pdf_data = download_pdf_result(j["id"])
+                        if pdf_data:
+                            st.download_button("📕 PDF", pdf_data, file_name=f"{title}.pdf", mime="application/pdf", key=f"arc_pdf_{j['id']}", use_container_width=True)
+                with cc3:
+                    st.download_button("📃 TXT", full, file_name=f"{title}.txt", key=f"arc_txt_{j['id']}", use_container_width=True)
+            st.divider()
+
+    st.caption(f"🗄 Database: {len(search_archive('', limit=1))} total arsip")
 
 elif page == "Dokumen Pendukung":
     st.markdown(

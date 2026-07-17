@@ -1,7 +1,7 @@
 import os
 import time
 import pytest
-from risalah.job_cache import cache_job, cache_jobs, get_cached_jobs, clear_cache
+from risalah.job_cache import cache_job, cache_jobs, get_cached_jobs, search_archive, clear_cache
 
 SAMPLE_JOB = {
     "id": "test-job-001",
@@ -88,3 +88,30 @@ class TestJobCache:
         assert len(jobs) == 1
         assert jobs[0]["id"] == "minimal"
         assert jobs[0]["file_name"] == ""
+
+    def test_search_archive_by_file_name(self):
+        cache_job({**SAMPLE_JOB, "id": "arc-1", "file_name": "rapat_bappeda.mp3"})
+        assert len(search_archive("bappeda")) == 1
+        assert len(search_archive("rapat")) == 1
+        assert len(search_archive("nonexistent")) == 0
+
+    def test_search_archive_by_preview(self):
+        cache_job({**SAMPLE_JOB, "id": "arc-2", "preview_text": "Pembahasan APBD Perubahan 2026"})
+        assert len(search_archive("APBD")) >= 1
+
+    def test_search_archive_by_full_text(self):
+        cache_job({**SAMPLE_JOB, "id": "arc-3", "full_text": "ini adalah rapat koordinasi pembahasan anggaran"})
+        assert len(search_archive("koordinasi")) >= 1
+        assert len(search_archive("anggaran")) >= 1
+
+    def test_search_archive_limit(self):
+        for i in range(5):
+            cache_job({**SAMPLE_JOB, "id": f"arc-limit-{i}", "file_name": f"file_{i}.mp3"})
+        assert len(search_archive("file", limit=2)) == 2
+        assert len(search_archive("file", limit=10)) == 5
+
+    def test_search_all_query_returns_all(self):
+        for i in range(3):
+            cache_job({**SAMPLE_JOB, "id": f"arc-all-{i}"})
+        # search_archive with '' matches everything
+        assert len(search_archive("", limit=10)) >= 3
