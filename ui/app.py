@@ -8,6 +8,8 @@ import requests
 import streamlit as st
 from dotenv import load_dotenv
 
+from risalah.job_cache import cache_jobs, get_cached_jobs
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
@@ -80,19 +82,27 @@ def get_jobs():
     try:
         r = requests.get(f"{API_BASE}/jobs?limit=50", timeout=5)
         if r.ok:
-            return r.json().get("jobs", [])
+            jobs = r.json().get("jobs", [])
+            cache_jobs(jobs)
+            return jobs
     except Exception:
         pass
-    return []
+    return get_cached_jobs()
 
 
 def get_job(job_id):
     try:
         r = requests.get(f"{API_BASE}/jobs/{job_id}", timeout=5)
         if r.ok:
-            return r.json()
+            data = r.json()
+            cache_jobs([data])
+            return data
     except Exception:
         pass
+    cached = get_cached_jobs()
+    for j in cached:
+        if j["id"] == job_id:
+            return j
     return None
 
 
@@ -130,7 +140,11 @@ def _transcribe_audio(audio_bytes):
 
 health = api_health()
 if not health:
-    st.sidebar.error("Server API tidak terhubung. Jalankan: uvicorn api.app:app --reload")
+    cached = get_cached_jobs(limit=1)
+    if cached:
+        st.sidebar.warning("⚠️ API offline. Menampilkan data dari cache lokal.")
+    else:
+        st.sidebar.error("Server API tidak terhubung. Jalankan: uvicorn api.app:app --reload")
 elif health.get("status") == "degraded":
     st.sidebar.warning("API berjalan tanpa Redis. Queue & progress real-time tidak aktif.")
 else:
@@ -366,6 +380,7 @@ elif page == "Riwayat Job":
 
     search_q = st.text_input("🔍 Cari job (nama file atau pesan)", placeholder="Ketik untuk filter...")
     jobs = get_jobs()
+    _total_jobs = len(jobs)
     if search_q:
         q = search_q.lower()
         jobs = [j for j in jobs if q in j.get("file_name", "").lower() or q in j.get("message", "").lower()]
@@ -373,7 +388,7 @@ elif page == "Riwayat Job":
     if not jobs:
         st.info("Tidak ada job" if not search_q else f"Tidak ditemukan job untuk \"{search_q}\"")
     else:
-        st.caption(f"{len(jobs)} job ditemukan")
+        st.caption(f"{len(jobs)} job ditemukan" + (f" (dari {_total_jobs} total)" if search_q else ""))
         for j in jobs:
             c1, c2, c3 = st.columns([3, 1, 1])
             with c1:
@@ -415,6 +430,9 @@ elif page == "Riwayat Job":
                 with st.expander("📝 Preview"):
                     st.text(preview[:2000])
             st.divider()
+
+        if jobs:
+            st.caption(f"🗄 Cache lokal: {len(jobs)} job tersimpan")
 
 elif page == "Panduan":
     st.markdown(
