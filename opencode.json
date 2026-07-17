@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["/Users/felix/Documents/Project Sementara/ponytail/.opencode/plugins/ponytail.mjs"],
+  "plugin": ["@bybrawe/opencode-loop", "opencode-auto-resume", "@tarquinen/opencode-dcp"],
   "default_agent": "build",
   "instructions": ["AGENTS.md"],
   "provider": {
