@@ -17,6 +17,12 @@ LLM_CONFIGS = [
         "key": os.getenv("NINEROUTER_API_KEY", ""),
         "model": os.getenv("NINEROUTER_MODEL", "groq/llama-3.3-70b-versatile"),
     },
+    {
+        "name": "Gemini",
+        "base": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "key": os.getenv("GEMINI_API_KEY", ""),
+        "model": os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+    },
 ]
 
 
