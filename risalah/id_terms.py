@@ -101,6 +101,7 @@ JABATAN = {
 
 
 DAERAH = {
+    "kulty": "kabupaten",
     "kulti": "kabupaten",
     "kabupatin": "kabupaten",
     "kabupatn": "kabupaten",
@@ -230,6 +231,8 @@ ASR_ERRORS = {
     "miliar": "miliar",
     "triliun": "triliun",
     "rupiah": "rupiah",
+    "milyar": "miliar",
+    "beberpa": "beberapa",
     "persen": "persen",
     "per sen": "persen",
     "prosen": "persen",
@@ -431,8 +434,8 @@ def normalize_indonesian(text: str) -> str:
     """Full normalization: slang removal, government terms, ASR fixes."""
     text = correct_terms(text)
 
-    # Collapse multiple spaces
-    text = re.sub(r'\s+', ' ', text)
+    # Collapse multiple spaces (preserve newlines)
+    text = re.sub(r'[ \t]+', ' ', text)
 
     # Trim punctuation spacing
     text = re.sub(r'\s+([,.;:!?])', r'\1', text)
