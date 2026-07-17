@@ -28,5 +28,6 @@ sseclient-py>=1.8
 # === UI ===
 streamlit>=1.40
 requests>=2.32
-scikit-learn==1.6.1
-speechbrain==1.1.0
+scikit-learn>=1.6.1
+speechbrain>=1.1.0
+pytesseract>=0.3

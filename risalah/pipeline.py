@@ -178,6 +178,61 @@ def stage_generate_docx(
         )
 
 
+def _run_parallel_stages(meta, engine, skip):
+    """Execute transcribe + diarize in parallel. Returns (transcript, merged)."""
+    if "transcribe" in skip or "diarize" in skip:
+        return None, None
+
+    from risalah.diarizer import merge_transcript_with_diarization, run_diarization
+    from risalah.transcriber import transcribe_all
+    from risalah.utils import run_parallel
+
+    print("=" * 60)
+    print("STAGE 3 & 4: TRANSKRIPSI + DIARIZATION (PARALEL)")
+    print("=" * 60)
+
+    def do_transcribe():
+        return transcribe_all(meta["chunks"], engine, output_dir=out("transcripts"))
+
+    def do_diarize():
+        return run_diarization(meta["chunks"], output_dir=out("diarization"))
+
+    try:
+        t_result, d_result = run_parallel(do_transcribe, do_diarize)
+        if t_result and d_result:
+            merged = merge_transcript_with_diarization(t_result, d_result)
+            merged_path = os.path.join(out("diarization"), "merged_lengkap.json")
+            with open(merged_path, "w", encoding="utf-8") as f:
+                json.dump(merged, f, indent=2, ensure_ascii=False)
+            speaker_counts = {}
+            for m in merged:
+                speaker_counts[m["speaker"]] = speaker_counts.get(m["speaker"], 0) + 1
+            print(f"Merge: {len(merged)} segmen, {len(speaker_counts)} speaker:")
+            for spk, count in sorted(speaker_counts.items()):
+                print(f"  {spk}: {count} segmen")
+            return t_result, merged
+        elif t_result and not d_result:
+            merged = [
+                {"chunk": c["chunk"], "start": s["start"], "end": s["end"],
+                 "speaker": s.get("speaker", "SPEAKER_UNKNOWN"), "text": s["text"]}
+                for c in t_result for s in c.get("segments", [])
+            ]
+            return t_result, merged
+    except Exception as e:
+        print(f"Parallel execution error: {e}")
+        print("Fallback ke sequential...")
+    return None, None
+
+
+def _fallback_merged(transcript):
+    """Build merged segments from transcript when diarization unavailable."""
+    return [
+        {"chunk": c["chunk"], "start": s["start"], "end": s["end"],
+         "speaker": s.get("speaker", "SPEAKER_UNKNOWN"), "text": s["text"]}
+        for c in transcript for s in c.get("segments", [])
+    ]
+
+
 def process_single_audio(
     file_path,
     engine,
@@ -198,62 +253,20 @@ def process_single_audio(
     if not meta:
         return None
 
-    transcript = None
-    merged = None
+    transcript, merged = None, None
 
-    if "transcribe" not in skip and "diarize" not in skip and parallel:
-        from risalah.diarizer import merge_transcript_with_diarization, run_diarization
-        from risalah.transcriber import transcribe_all
-        from risalah.utils import run_parallel
+    if parallel:
+        transcript, merged = _run_parallel_stages(meta, engine, skip)
 
-        print("=" * 60)
-        print("STAGE 3 & 4: TRANSKRIPSI + DIARIZATION (PARALEL)")
-        print("=" * 60)
-
-        def do_transcribe():
-            return transcribe_all(meta["chunks"], engine, output_dir=out("transcripts"))
-
-        def do_diarize():
-            return run_diarization(meta["chunks"], output_dir=out("diarization"))
-
-        try:
-            t_result, d_result = run_parallel(do_transcribe, do_diarize)
-            transcript = t_result
-            if transcript and d_result:
-                merged = merge_transcript_with_diarization(transcript, d_result)
-                merged_path = os.path.join(out("diarization"), "merged_lengkap.json")
-                with open(merged_path, "w", encoding="utf-8") as f:
-                    json.dump(merged, f, indent=2, ensure_ascii=False)
-                speaker_counts = {}
-                for m in merged:
-                    speaker_counts[m["speaker"]] = speaker_counts.get(m["speaker"], 0) + 1
-                print(f"Merge: {len(merged)} segmen, {len(speaker_counts)} speaker:")
-                for spk, count in sorted(speaker_counts.items()):
-                    print(f"  {spk}: {count} segmen")
-            elif transcript and not d_result:
-                merged = [
-                    {
-                        "chunk": c["chunk"],
-                        "start": s["start"],
-                        "end": s["end"],
-                        "speaker": s.get("speaker", "SPEAKER_UNKNOWN"),
-                        "text": s["text"],
-                    }
-                    for c in transcript
-                    for s in c.get("segments", [])
-                ]
-        except Exception as e:
-            print(f"Parallel execution error: {e}")
-            print("Fallback ke sequential...")
-
+    # Sequential fallback untuk transkripsi
     if transcript is None and "transcribe" not in skip:
         transcript = stage_transcribe(meta["chunks"], engine)
-
     if transcript is None:
         transcript = load_json(os.path.join(out("transcripts"), "transkrip_lengkap.json"))
     if not transcript:
         return None
 
+    # Sequential fallback untuk diarization
     if merged is None:
         merged = (
             stage_diarize(meta["chunks"], transcript)
@@ -261,28 +274,23 @@ def process_single_audio(
             else load_json(os.path.join(out("diarization"), "merged_lengkap.json"))
         )
     if not merged:
-        merged = [
-            {
-                "chunk": c["chunk"],
-                "start": s["start"],
-                "end": s["end"],
-                "speaker": s.get("speaker", "SPEAKER_UNKNOWN"),
-                "text": s["text"],
-            }
-            for c in transcript
-            for s in c.get("segments", [])
-        ]
+        merged = _fallback_merged(transcript)
 
+    return _build_result(file_path, merged, extracted_text, doc_analysis, preview,
+                         doc_number, classification, title)
+
+
+def _build_result(file_path, merged, extracted_text, doc_analysis,
+                  preview, doc_number, classification, title):
+    """Enhance transcript and generate DOCX."""
     merged = correct_transcript(merged)
     enhanced = stage_enhance(merged, extracted_text, doc_analysis)
-
     metadata = {
         "tanggal": datetime.now().strftime("%A, %d %B %Y"),
         "waktu": "_______________ - selesai",
         "tempat": "_______________",
         "acara": os.path.splitext(os.path.basename(file_path))[0],
     }
-
     return stage_generate_docx(enhanced, metadata, preview, doc_number, classification, title)
 
 
